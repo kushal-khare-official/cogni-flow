@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -10,4 +5,39 @@ generator client {
 
 datasource db {
   provider = "sqlite"
+}
+
+model Workflow {
+  id          String   @id @default(cuid())
+  name        String   @default("Untitled Workflow")
+  description String   @default("")
+  status      String   @default("draft")
+  nodes       String   @default("[]")
+  edges       String   @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  validationRuns ValidationRun[]
+  connectors     Connector[]
+}
+
+model ValidationRun {
+  id             String   @id @default(cuid())
+  workflowId     String
+  inputs         String   @default("[]")
+  executionTrace String   @default("[]")
+  result         String   @default("pending")
+  createdAt      DateTime @default(now())
+
+  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+}
+
+model Connector {
+  id         String @id @default(cuid())
+  type       String
+  name       String
+  config     String @default("{}")
+  workflowId String
+
+  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
 }
