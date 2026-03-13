@@ -11,6 +11,11 @@ import {
   type BpmnNodeData,
   BpmnNodeType,
 } from "@/lib/workflow/types";
+import {
+  findLoopBackEdge,
+  collectLoopBody,
+  findLastStepInLoop,
+} from "@/lib/workflow/loop-utils";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -403,6 +408,69 @@ export function NodeInspector() {
             <Button variant="outline" size="sm" onClick={() => addIoField("expectedOutputs")} className="gap-1 text-[10px]">
               <Plus className="size-3" /> Add Output
             </Button>
+          </div>
+        </>
+      )}
+
+      {/* Loop configuration */}
+      {data.bpmnType === BpmnNodeType.Loop && (
+        <>
+          <Separator />
+          <div className="space-y-3">
+            <Label className="text-xs font-semibold text-zinc-600">Loop Settings</Label>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs text-zinc-500">Max Iterations</Label>
+              <Input
+                type="number"
+                min={1}
+                max={1000}
+                value={(data.config as Record<string, unknown>)?.maxIterations as number ?? 10}
+                onChange={(e) =>
+                  update({ config: { ...data.config, maxIterations: Number(e.target.value) || 10 } })
+                }
+                className="text-sm"
+              />
+              <p className="text-[10px] text-zinc-400">
+                Loop terminates after this many iterations.
+              </p>
+            </div>
+
+            {(() => {
+              const backEdge = findLoopBackEdge(node.id, edges);
+              const lastStepId = findLastStepInLoop(node.id, edges);
+              const bodyIds = collectLoopBody(node.id, nodes, edges);
+              const bodyNodes = bodyIds
+                .map((id) => nodes.find((n) => n.id === id))
+                .filter(Boolean);
+
+              if (!backEdge) {
+                return (
+                  <div className="rounded-md border border-amber-100 bg-amber-50 px-2.5 py-2">
+                    <p className="text-[11px] text-amber-700">
+                      No back-edge detected. Connect the last step in your loop body back to
+                      this Loop node to enable iteration.
+                    </p>
+                  </div>
+                );
+              }
+
+              const lastNode = nodes.find((n) => n.id === lastStepId);
+              return (
+                <div className="space-y-2">
+                  <div className="rounded-md border border-zinc-100 bg-zinc-50 p-2 text-[11px] text-zinc-500">
+                    <p>
+                      <span className="font-medium text-zinc-600">Body:</span>{" "}
+                      {bodyNodes.map((n) => n!.data.label).join(" → ")}
+                    </p>
+                    <p className="mt-1">
+                      <span className="font-medium text-zinc-600">Last step:</span>{" "}
+                      {lastNode?.data.label ?? lastStepId}
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </>
       )}

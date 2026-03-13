@@ -1,5 +1,11 @@
 import type { BpmnNode, BpmnEdge, ExecutionTraceStep } from "./types";
 import { BpmnNodeType } from "./types";
+import {
+  findLoopBackEdge,
+  collectLoopBody,
+  findLoopExitEdge,
+  shouldLoopContinue,
+} from "./loop-utils";
 
 const TASK_TYPES = new Set<string>([
   BpmnNodeType.ServiceTask,
@@ -9,7 +15,7 @@ const TASK_TYPES = new Set<string>([
   BpmnNodeType.ReceiveTask,
 ]);
 
-const MAX_STEPS = 100;
+const MAX_STEPS = 200;
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -88,7 +94,11 @@ export async function simulateWorkflow(
       output = { updated: true, rowsAffected: 1 };
     } else if (bpmnType === BpmnNodeType.Loop) {
       const iteration = (typeof currentInput.iteration === "number" ? currentInput.iteration : 0) + 1;
-      output = { ...currentInput, iteration };
+      const continuing = shouldLoopContinue(node, iteration);
+      output = { ...currentInput, iteration, loopContinue: continuing };
+      decision = continuing
+        ? `Iteration ${iteration} — continuing`
+        : `Iteration ${iteration} — loop finished`;
     } else if (bpmnType === BpmnNodeType.Wait) {
       await delay(100);
       output = { ...currentInput };
@@ -112,6 +122,15 @@ export async function simulateWorkflow(
     const nextEdges = outgoingEdges(currentNodeId, edges);
     if (nextEdges.length === 0) {
       currentNodeId = null;
+    } else if (bpmnType === BpmnNodeType.Loop) {
+      const continuing = output.loopContinue as boolean;
+      if (continuing) {
+        const body = collectLoopBody(currentNodeId, nodes, edges);
+        currentNodeId = body.length > 0 ? body[0] : nextEdges[0].target;
+      } else {
+        const exitEdge = findLoopExitEdge(currentNodeId, nodes, edges);
+        currentNodeId = exitEdge ? exitEdge.target : nextEdges[0].target;
+      }
     } else if (
       bpmnType === BpmnNodeType.ExclusiveGateway &&
       nextEdges.length > 1
@@ -119,7 +138,12 @@ export async function simulateWorkflow(
       const chosen = nextEdges[Math.floor(Math.random() * nextEdges.length)];
       currentNodeId = chosen.target;
     } else {
-      currentNodeId = nextEdges[0].target;
+      const backEdge = findLoopBackEdge(currentNodeId, edges);
+      if (backEdge && backEdge.source === currentNodeId) {
+        currentNodeId = backEdge.target;
+      } else {
+        currentNodeId = nextEdges[0].target;
+      }
     }
 
     currentInput = { ...output };
