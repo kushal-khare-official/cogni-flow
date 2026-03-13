@@ -12,6 +12,7 @@ import {
 import type { BpmnNode } from "@/lib/workflow/types";
 import { BpmnNodeType } from "@/lib/workflow/types";
 import { cn } from "@/lib/utils";
+import { ExecutionStatusOverlay } from "./ExecutionStatusOverlay";
 
 const TASK_ICONS: Record<string, React.ElementType> = {
   [BpmnNodeType.ServiceTask]: Cog,
@@ -28,7 +29,7 @@ function TaskNodeComponent({ data, selected }: NodeProps<BpmnNode>) {
   return (
     <div
       className={cn(
-        "w-44 min-h-16 rounded-lg border border-slate-200 bg-white shadow-sm transition-all duration-300",
+        "relative w-44 min-h-16 rounded-lg border border-slate-200 bg-white shadow-sm transition-all duration-300",
         selected && "ring-2 ring-blue-400 shadow-md",
         status === "running" && "ring-2 ring-blue-400 animate-pulse shadow-blue-200 shadow-lg",
         status === "completed" && "ring-2 ring-emerald-400 shadow-emerald-200 shadow-lg border-emerald-300",
@@ -59,6 +60,7 @@ function TaskNodeComponent({ data, selected }: NodeProps<BpmnNode>) {
         position={Position.Bottom}
         className="!h-2.5 !w-2.5 !border-2 !border-blue-500 !bg-white"
       />
+      <ExecutionStatusOverlay data={data} />
     </div>
   );
 }

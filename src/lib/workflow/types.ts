@@ -70,7 +70,9 @@ export interface BpmnNodeData {
   webhookPath?: string;
   // Execution trace state
   executionStatus?: "idle" | "running" | "completed" | "error";
+  executionInput?: unknown;
   executionOutput?: unknown;
+  executionCount?: number;
   [key: string]: unknown;
 }
 

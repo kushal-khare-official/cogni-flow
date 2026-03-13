@@ -6,6 +6,7 @@ import { Plug } from "lucide-react";
 import type { BpmnNode } from "@/lib/workflow/types";
 import { cn } from "@/lib/utils";
 import { useIntegrationStore } from "@/lib/store/integration-store";
+import { ExecutionStatusOverlay } from "./ExecutionStatusOverlay";
 
 function IntegrationNodeComponent({ data, selected }: NodeProps<BpmnNode>) {
   const templates = useIntegrationStore((s) => s.templates);
@@ -24,7 +25,7 @@ function IntegrationNodeComponent({ data, selected }: NodeProps<BpmnNode>) {
   return (
     <div
       className={cn(
-        "w-44 min-h-16 rounded-lg border border-slate-200 bg-white shadow-sm transition-all duration-300",
+        "relative w-44 min-h-16 rounded-lg border border-slate-200 bg-white shadow-sm transition-all duration-300",
         selected && "ring-2 ring-purple-400 shadow-md",
         status === "running" && "ring-2 ring-purple-400 animate-pulse shadow-purple-200 shadow-lg",
         status === "completed" && "ring-2 ring-emerald-400 shadow-emerald-200 shadow-lg border-emerald-300",
@@ -60,6 +61,7 @@ function IntegrationNodeComponent({ data, selected }: NodeProps<BpmnNode>) {
         position={Position.Bottom}
         className="!h-2.5 !w-2.5 !border-2 !border-purple-500 !bg-white"
       />
+      <ExecutionStatusOverlay data={data} />
     </div>
   );
 }

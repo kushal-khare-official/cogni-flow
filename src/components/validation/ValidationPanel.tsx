@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { X, Play, Loader2, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,7 @@ import { useUIStore } from "@/lib/store/ui-store";
 import { useValidationStore } from "./validation-store";
 import { runValidation } from "@/lib/workflow/validation";
 import type { ValidationResult } from "@/lib/workflow/types";
+import { TestDetailView } from "./TestDetailView";
 
 export function ValidationPanel() {
   const [loading, setLoading] = useState(false);
@@ -17,6 +18,8 @@ export function ValidationPanel() {
 
   const results = useValidationStore((s) => s.results);
   const setResults = useValidationStore((s) => s.setResults);
+  const selectedTestId = useValidationStore((s) => s.selectedTestId);
+  const setSelectedTestId = useValidationStore((s) => s.setSelectedTestId);
 
   const nodes = useWorkflowStore((s) => s.nodes);
   const edges = useWorkflowStore((s) => s.edges);
@@ -30,6 +33,7 @@ export function ValidationPanel() {
     setError(null);
     setResults([]);
     setActiveTraceId(null);
+    setSelectedTestId(null);
 
     try {
       const res = await fetch("/api/ai/validate", {
@@ -156,33 +160,43 @@ export function ValidationPanel() {
             </thead>
             <tbody>
               {results.map((r) => (
-                <tr
-                  key={r.id}
-                  onClick={() =>
-                    setActiveTraceId(activeTraceId === r.id ? null : r.id)
-                  }
-                  className={`cursor-pointer border-b border-slate-50 transition-colors hover:bg-slate-50 ${
-                    activeTraceId === r.id
-                      ? "bg-blue-50 hover:bg-blue-50"
-                      : ""
-                  }`}
-                >
-                  <td className="px-4 py-2 font-medium text-slate-700">
-                    {r.id}
-                  </td>
-                  <td className="px-4 py-2">
-                    <ResultBadge result={r.result} error={r.error} />
-                  </td>
-                  <td className="px-4 py-2">
-                    <CoverageBar value={r.coveragePercent} />
-                  </td>
-                  <td className="px-4 py-2 text-slate-600">
-                    {r.branchesHit.length}
-                  </td>
-                  <td className="px-4 py-2 text-slate-600">
-                    {r.trace.length}
-                  </td>
-                </tr>
+                <Fragment key={r.id}>
+                  <tr
+                    onClick={() => {
+                      const nextId = selectedTestId === r.id ? null : r.id;
+                      setSelectedTestId(nextId);
+                      setActiveTraceId(nextId);
+                    }}
+                    className={`cursor-pointer border-b border-slate-50 transition-colors hover:bg-slate-50 ${
+                      selectedTestId === r.id
+                        ? "bg-blue-50 hover:bg-blue-50"
+                        : ""
+                    }`}
+                  >
+                    <td className="px-4 py-2 font-medium text-slate-700">
+                      {r.id}
+                    </td>
+                    <td className="px-4 py-2">
+                      <ResultBadge result={r.result} error={r.error} />
+                    </td>
+                    <td className="px-4 py-2">
+                      <CoverageBar value={r.coveragePercent} />
+                    </td>
+                    <td className="px-4 py-2 text-slate-600">
+                      {r.branchesHit.length}
+                    </td>
+                    <td className="px-4 py-2 text-slate-600">
+                      {r.trace.length}
+                    </td>
+                  </tr>
+                  {selectedTestId === r.id && (
+                    <tr>
+                      <td colSpan={5} className="p-0 align-top">
+                        <TestDetailView result={r} nodes={nodes} />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
             </tbody>
           </table>
