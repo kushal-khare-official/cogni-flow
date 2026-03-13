@@ -9,7 +9,6 @@ import { useUIStore } from "@/lib/store/ui-store";
 import { getReactFlowNodeType, BpmnNodeType } from "@/lib/workflow/types";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { v4 as uuidv4 } from "uuid";
 
 interface WorkflowPatch {
@@ -167,14 +166,14 @@ export function WorkflowChat() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      {/* Messages - same draggable ScrollArea as node palette; wrapper enforces height so scrollbar appears */}
-      <div className="min-h-0 flex-1 overflow-hidden">
-        <ScrollArea
-          viewportRef={scrollRef}
-          className="h-full"
-        >
-          <div className="flex flex-col gap-3 py-3 pl-3 pr-2">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      {/* Messages - scrollable area with visible right scrollbar */}
+      <div
+        ref={scrollRef}
+        className="min-h-0 flex-1 overflow-y-scroll overflow-x-hidden pr-1"
+        style={{ scrollbarGutter: "stable" }}
+      >
+        <div className="flex flex-col gap-3 py-3 pl-3 pr-2">
           {messages.length === 0 && (
             <div className="flex flex-col items-center gap-2 py-8 text-center">
               <div className="flex size-10 items-center justify-center rounded-full bg-zinc-100">
@@ -258,8 +257,7 @@ export function WorkflowChat() {
               </Button>
             </div>
           )}
-          </div>
-        </ScrollArea>
+        </div>
       </div>
 
       {/* Input */}
