@@ -8,7 +8,7 @@ const testInputsSchema = z.object({
   testInputs: z.array(
     z.object({
       name: z.string(),
-      data: z.record(z.string(), z.unknown()),
+      data: z.array(z.object({ key: z.string(), value: z.string() })).describe("Test input data as key-value pairs"),
     }),
   ),
 });
@@ -37,7 +37,15 @@ export async function POST(request: NextRequest) {
         JSON.stringify(workflow),
     });
 
-    return NextResponse.json(result.object);
+    const output = result.object;
+    const transformed = {
+      testInputs: output.testInputs.map((input) => ({
+        name: input.name,
+        data: Object.fromEntries(input.data.map((d) => [d.key, d.value])),
+      })),
+    };
+
+    return NextResponse.json(transformed);
   } catch (error) {
     console.error("[ai/validate]", error);
     const message =

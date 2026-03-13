@@ -1,17 +1,5 @@
 import type { BpmnNode, BpmnEdge, ExecutionTraceStep } from "./types";
 import { BpmnNodeType } from "./types";
-import { executeMockConnector } from "../connectors/mock-executors";
-
-const CONNECTOR_TYPES = new Set<string>([
-  BpmnNodeType.KafkaConnector,
-  BpmnNodeType.PostgresConnector,
-  BpmnNodeType.StripeConnector,
-  BpmnNodeType.SalesforceConnector,
-  BpmnNodeType.SAPConnector,
-  BpmnNodeType.KeycloakConnector,
-  BpmnNodeType.PrometheusConnector,
-  BpmnNodeType.RPAConnector,
-]);
 
 const TASK_TYPES = new Set<string>([
   BpmnNodeType.ServiceTask,
@@ -39,7 +27,9 @@ export async function simulateWorkflow(
   const nodeMap = new Map(nodes.map((n) => [n.id, n]));
   const trace: ExecutionTraceStep[] = [];
 
-  const startNode = nodes.find((n) => n.data.bpmnType === BpmnNodeType.StartEvent);
+  const startNode = nodes.find(
+    (n) => n.data.bpmnType === BpmnNodeType.StartEvent || n.data.bpmnType === BpmnNodeType.WebhookTrigger
+  );
   if (!startNode) {
     throw new Error("Workflow has no start event");
   }
@@ -56,7 +46,7 @@ export async function simulateWorkflow(
     let output: Record<string, unknown> = {};
     let decision: string | undefined;
 
-    if (bpmnType === BpmnNodeType.StartEvent) {
+    if (bpmnType === BpmnNodeType.StartEvent || bpmnType === BpmnNodeType.WebhookTrigger) {
       output = { ...currentInput };
     } else if (bpmnType === BpmnNodeType.EndEvent) {
       output = { ...currentInput };
@@ -85,8 +75,9 @@ export async function simulateWorkflow(
     } else if (bpmnType === BpmnNodeType.InclusiveGateway) {
       output = { ...currentInput };
       decision = "Inclusive merge — following first outgoing edge";
-    } else if (CONNECTOR_TYPES.has(bpmnType)) {
-      output = await executeMockConnector(bpmnType, currentInput);
+    } else if (bpmnType === BpmnNodeType.Integration) {
+      await delay(Math.floor(Math.random() * 80) + 20);
+      output = { ...currentInput, integration: "mock_response", status: "ok" };
     } else if (bpmnType === BpmnNodeType.SendEmail) {
       output = { sent: true, to: currentInput.email || "user@example.com" };
     } else if (bpmnType === BpmnNodeType.HumanReview) {

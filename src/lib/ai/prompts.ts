@@ -23,15 +23,9 @@ Each node has a \`bpmnType\` (the BPMN semantic type) and a \`type\` (the React 
 - parallelGateway -> gatewayNode (AND: all paths taken concurrently)
 - inclusiveGateway -> gatewayNode (OR: one or more paths taken)
 
-### Connectors
-- kafkaConnector -> connectorNode (Apache Kafka)
-- postgresConnector -> connectorNode (PostgreSQL database)
-- stripeConnector -> connectorNode (Stripe payments)
-- salesforceConnector -> connectorNode (Salesforce CRM)
-- sapConnector -> connectorNode (SAP ERP)
-- keycloakConnector -> connectorNode (Keycloak auth)
-- prometheusConnector -> connectorNode (Prometheus monitoring)
-- rpaConnector -> connectorNode (RPA bot automation)
+### Integrations
+- integration -> integrationNode (data-driven integration: Stripe, Keycloak, SAP, Salesforce, Prometheus, RPA, MCP Tools, or custom HTTP/code)
+- webhookTrigger -> webhookTriggerNode (webhook-based workflow start)
 
 ### Logic
 - loop -> logicNode (iterative loop)
@@ -53,13 +47,14 @@ Each node has a \`bpmnType\` (the BPMN semantic type) and a \`type\` (the React 
 
 ## Structural Rules
 
-- Every workflow MUST begin with exactly one startEvent node (type: startEventNode).
+- Every workflow MUST begin with exactly one startEvent node (type: startEventNode) OR one webhookTrigger node (type: webhookTriggerNode).
 - Every workflow MUST end with at least one endEvent node (type: endEventNode).
 - Each node must have a unique id following the pattern "node-1", "node-2", "node-3", etc.
 - Each edge must have an id following the pattern "e-{source}-{target}", e.g. "e-node-1-node-2".
 - All edges must use type "conditional".
 - Gateway nodes MUST have multiple outgoing edges. Each outgoing edge should have a descriptive label in data.label and an expression in data.condition.
 - Gateway nodes should include a \`conditions\` array in their data mapping each outgoing edgeId to its expression.
+- For integration nodes, set data.integrationTemplateId to a known template ID (e.g. "tpl-stripe", "tpl-keycloak", "tpl-salesforce", "tpl-sap", "tpl-prometheus", "tpl-rpa", "tpl-mcp") and data.operationId to the operation.
 - Provide a clear, concise label for every node.
 - Include a brief description for non-trivial nodes.`;
 

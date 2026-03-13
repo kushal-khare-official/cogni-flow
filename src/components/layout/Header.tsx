@@ -9,6 +9,7 @@ import {
   Play,
   Upload,
   Loader2,
+  Settings,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +29,12 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { useUIStore } from "@/lib/store/ui-store";
 import { useWorkflowStore } from "@/lib/store/workflow-store";
+import { RunDialog } from "@/components/execution/RunDialog";
+import { BpmnImportDialog } from "@/components/import/BpmnImportDialog";
+import { CredentialManager } from "@/components/settings/CredentialManager";
+import { IntegrationManager } from "@/components/settings/IntegrationManager";
+import { ScheduleConfig } from "@/components/settings/ScheduleConfig";
+import { WebhookConfig } from "@/components/settings/WebhookConfig";
 
 const AI_PROVIDERS = [
   { value: "openai", label: "OpenAI" },
@@ -69,7 +76,7 @@ export function Header() {
         }
       }
     } catch {
-      // Network errors are silently caught; a toast system would handle this in production
+      // Network errors are silently caught
     } finally {
       setIsGenerating(false);
     }
@@ -139,6 +146,8 @@ export function Header() {
 
           <Separator orientation="vertical" className="!h-5 bg-zinc-700" />
 
+          <RunDialog />
+
           <Button
             variant="ghost"
             size="sm"
@@ -158,6 +167,14 @@ export function Header() {
             <Upload className="size-3.5" />
             Publish
           </Button>
+
+          <Separator orientation="vertical" className="!h-5 bg-zinc-700" />
+
+          <BpmnImportDialog />
+          <IntegrationManager />
+          <CredentialManager />
+          <ScheduleConfig />
+          <WebhookConfig />
 
           <Separator orientation="vertical" className="!h-5 bg-zinc-700" />
 

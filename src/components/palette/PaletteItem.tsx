@@ -27,7 +27,7 @@ const CATEGORY_COLORS: Record<PaletteCategory, { bg: string; border: string; ico
     border: "border-amber-200",
     icon: "text-amber-600",
   },
-  connectors: {
+  integrations: {
     bg: "bg-purple-50 hover:bg-purple-100",
     border: "border-purple-200",
     icon: "text-purple-600",
