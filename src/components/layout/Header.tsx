@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
+import Link from "next/link";
 import {
   Sparkles,
   Send,
@@ -107,9 +108,19 @@ export function Header() {
           </TooltipProvider>
 
           <div className="flex items-center gap-2">
-            <span className="text-sm font-bold tracking-tight text-white">
+            <Link
+              href="/"
+              className="text-sm font-bold tracking-tight text-white hover:text-zinc-200"
+            >
               CogniFlow
-            </span>
+            </Link>
+            <Separator orientation="vertical" className="!h-5 bg-zinc-700" />
+            <Link
+              href="/workflows"
+              className="text-xs text-zinc-400 transition-colors hover:text-white"
+            >
+              Workflows
+            </Link>
             <Separator orientation="vertical" className="!h-5 bg-zinc-700" />
             <input
               type="text"
