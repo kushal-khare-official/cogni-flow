@@ -17,7 +17,6 @@ const CATEGORY_ORDER: PaletteCategory[] = [
   "events",
   "tasks",
   "gateways",
-  "connectors",
   "logic",
   "actions",
 ];

@@ -2,34 +2,24 @@
 
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import {
-  Database,
-  CreditCard,
-  Cloud,
-  Server,
-  Shield,
-  Activity,
-  Bot,
-  Cable,
-} from "lucide-react";
+import { Plug } from "lucide-react";
 import type { BpmnNode } from "@/lib/workflow/types";
-import { BpmnNodeType } from "@/lib/workflow/types";
 import { cn } from "@/lib/utils";
+import { useIntegrationStore } from "@/lib/store/integration-store";
 
-const CONNECTOR_ICONS: Record<string, React.ElementType> = {
-  [BpmnNodeType.KafkaConnector]: Cable,
-  [BpmnNodeType.PostgresConnector]: Database,
-  [BpmnNodeType.StripeConnector]: CreditCard,
-  [BpmnNodeType.SalesforceConnector]: Cloud,
-  [BpmnNodeType.SAPConnector]: Server,
-  [BpmnNodeType.KeycloakConnector]: Shield,
-  [BpmnNodeType.PrometheusConnector]: Activity,
-  [BpmnNodeType.RPAConnector]: Bot,
-};
-
-function ConnectorNodeComponent({ data, selected }: NodeProps<BpmnNode>) {
-  const Icon = CONNECTOR_ICONS[data.bpmnType] ?? Cable;
+function IntegrationNodeComponent({ data, selected }: NodeProps<BpmnNode>) {
+  const templates = useIntegrationStore((s) => s.templates);
+  const template = templates.find((t) => t.id === data.integrationTemplateId);
   const status = data.executionStatus;
+
+  const displayName = template?.name ?? data.label;
+  const operationLabel = data.operationId
+    ? (() => {
+        if (!template) return data.operationId;
+        const ops = JSON.parse(template.operations || "[]") as { id: string; name: string }[];
+        return ops.find((o) => o.id === data.operationId)?.name ?? data.operationId;
+      })()
+    : null;
 
   return (
     <div
@@ -48,11 +38,16 @@ function ConnectorNodeComponent({ data, selected }: NodeProps<BpmnNode>) {
       />
       <div className="h-2 rounded-t-lg bg-purple-500" />
       <div className="flex items-start gap-2 px-3 py-2">
-        <Icon className="mt-0.5 h-4 w-4 shrink-0 text-purple-600" />
+        <Plug className="mt-0.5 h-4 w-4 shrink-0 text-purple-600" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-xs font-semibold text-slate-800">
-            {data.label}
+            {displayName}
           </p>
+          {operationLabel && (
+            <p className="mt-0.5 truncate text-[10px] text-purple-500 font-medium">
+              {operationLabel}
+            </p>
+          )}
           {data.description && (
             <p className="mt-0.5 line-clamp-2 text-[10px] leading-tight text-slate-500">
               {data.description}
@@ -69,4 +64,4 @@ function ConnectorNodeComponent({ data, selected }: NodeProps<BpmnNode>) {
   );
 }
 
-export const ConnectorNode = memo(ConnectorNodeComponent);
+export const IntegrationNode = memo(IntegrationNodeComponent);

@@ -39,6 +39,8 @@ export async function POST(request: NextRequest) {
             ? Object.fromEntries(node.data.config.map((c) => [c.key, c.value]))
             : undefined,
           conditions: node.data.conditions ?? undefined,
+          integrationTemplateId: node.data.integrationTemplateId ?? undefined,
+          operationId: node.data.operationId ?? undefined,
         },
       })),
       edges: output.edges.map((edge) => ({

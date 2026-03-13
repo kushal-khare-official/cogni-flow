@@ -20,15 +20,11 @@ export enum BpmnNodeType {
   ParallelGateway = "parallelGateway",
   InclusiveGateway = "inclusiveGateway",
 
-  // Connectors
-  KafkaConnector = "kafkaConnector",
-  PostgresConnector = "postgresConnector",
-  StripeConnector = "stripeConnector",
-  SalesforceConnector = "salesforceConnector",
-  SAPConnector = "sapConnector",
-  KeycloakConnector = "keycloakConnector",
-  PrometheusConnector = "prometheusConnector",
-  RPAConnector = "rpaConnector",
+  // Integration (data-driven, references IntegrationTemplate in DB)
+  Integration = "integration",
+
+  // Triggers
+  WebhookTrigger = "webhookTrigger",
 
   // Logic
   Loop = "loop",
@@ -45,7 +41,7 @@ export type PaletteCategory =
   | "events"
   | "tasks"
   | "gateways"
-  | "connectors"
+  | "integrations"
   | "logic"
   | "actions";
 
@@ -56,13 +52,22 @@ export interface BpmnNodeData {
   config?: Record<string, unknown>;
   // Gateway-specific
   conditions?: { edgeId: string; expression: string }[];
-  // Connector-specific
-  connectorType?: string;
-  connectorConfig?: Record<string, unknown>;
+  // Integration-specific (data-driven, references DB templates)
+  integrationTemplateId?: string;
+  operationId?: string;
+  credentialId?: string;
+  inputMapping?: Record<string, string>;
+  // Code-specific
+  code?: string;
+  // Step I/O contract
+  expectedInputs?: { key: string; type: string; description?: string }[];
+  expectedOutputs?: { key: string; type: string; description?: string }[];
   // Task-specific
   threshold?: number;
   confidenceScore?: number;
   inputFeatures?: string[];
+  // Webhook-specific
+  webhookPath?: string;
   // Execution trace state
   executionStatus?: "idle" | "running" | "completed" | "error";
   executionOutput?: unknown;
@@ -127,15 +132,9 @@ export const NODE_TYPE_CATEGORIES: Record<PaletteCategory, BpmnNodeType[]> = {
     BpmnNodeType.ParallelGateway,
     BpmnNodeType.InclusiveGateway,
   ],
-  connectors: [
-    BpmnNodeType.KafkaConnector,
-    BpmnNodeType.PostgresConnector,
-    BpmnNodeType.StripeConnector,
-    BpmnNodeType.SalesforceConnector,
-    BpmnNodeType.SAPConnector,
-    BpmnNodeType.KeycloakConnector,
-    BpmnNodeType.PrometheusConnector,
-    BpmnNodeType.RPAConnector,
+  integrations: [
+    BpmnNodeType.Integration,
+    BpmnNodeType.WebhookTrigger,
   ],
   logic: [BpmnNodeType.Loop, BpmnNodeType.Wait, BpmnNodeType.SplitPath],
   actions: [
@@ -159,14 +158,8 @@ export const NODE_TYPE_LABELS: Record<BpmnNodeType, string> = {
   [BpmnNodeType.ExclusiveGateway]: "Exclusive Gateway",
   [BpmnNodeType.ParallelGateway]: "Parallel Gateway",
   [BpmnNodeType.InclusiveGateway]: "Inclusive Gateway",
-  [BpmnNodeType.KafkaConnector]: "Kafka",
-  [BpmnNodeType.PostgresConnector]: "PostgreSQL",
-  [BpmnNodeType.StripeConnector]: "Stripe",
-  [BpmnNodeType.SalesforceConnector]: "Salesforce",
-  [BpmnNodeType.SAPConnector]: "SAP ERP",
-  [BpmnNodeType.KeycloakConnector]: "Keycloak",
-  [BpmnNodeType.PrometheusConnector]: "Prometheus",
-  [BpmnNodeType.RPAConnector]: "RPA Bot",
+  [BpmnNodeType.Integration]: "Integration",
+  [BpmnNodeType.WebhookTrigger]: "Webhook Trigger",
   [BpmnNodeType.Loop]: "Loop",
   [BpmnNodeType.Wait]: "Wait",
   [BpmnNodeType.SplitPath]: "Split Path",
@@ -179,7 +172,7 @@ export const CATEGORY_LABELS: Record<PaletteCategory, string> = {
   events: "Events",
   tasks: "Tasks",
   gateways: "Gateways",
-  connectors: "Connectors",
+  integrations: "Integrations",
   logic: "Logic",
   actions: "Actions",
 };
@@ -202,7 +195,10 @@ export function getReactFlowNodeType(bpmnType: BpmnNodeType): string {
           : "eventNode",
     tasks: "taskNode",
     gateways: "gatewayNode",
-    connectors: "connectorNode",
+    integrations:
+      bpmnType === BpmnNodeType.WebhookTrigger
+        ? "webhookTriggerNode"
+        : "integrationNode",
     logic: "logicNode",
     actions: "actionNode",
   };

@@ -17,8 +17,10 @@ model Workflow {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  validationRuns ValidationRun[]
-  connectors     Connector[]
+  validationRuns   ValidationRun[]
+  executionRuns    ExecutionRun[]
+  webhookEndpoints WebhookEndpoint[]
+  schedules        Schedule[]
 }
 
 model ValidationRun {
@@ -32,12 +34,76 @@ model ValidationRun {
   workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
 }
 
-model Connector {
-  id         String @id @default(cuid())
-  type       String
-  name       String
-  config     String @default("{}")
-  workflowId String
+model IntegrationTemplate {
+  id               String   @id @default(cuid())
+  name             String
+  icon             String   @default("plug")
+  category         String   @default("custom")
+  type             String   // "http" | "mcp_tool" | "code" | "webhook"
+  description      String   @default("")
+  baseConfig       String   @default("{}")
+  operations       String   @default("[]")
+  credentialSchema String   @default("[]")
+  mockConfig       String   @default("{}")
+  isBuiltIn        Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Credential {
+  id             String   @id @default(cuid())
+  name           String
+  type           String   // "apiKey" | "bearerToken" | "basicAuth" | "oauth2" | "connectionString" | "custom"
+  encryptedValue String
+  metadata       String   @default("{}")
+  workflowId     String?
+  createdAt      DateTime @default(now())
+}
+
+model ExecutionRun {
+  id          String    @id @default(cuid())
+  workflowId  String
+  trigger     String    @default("manual")
+  status      String    @default("pending")
+  input       String    @default("{}")
+  output      String    @default("{}")
+  context     String    @default("{}")
+  trace       String    @default("[]")
+  error       String?
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
 
   workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+}
+
+model WebhookEndpoint {
+  id         String  @id @default(cuid())
+  workflowId String
+  path       String  @unique
+  secret     String  @default("")
+  active     Boolean @default(true)
+
+  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+}
+
+model Schedule {
+  id             String    @id @default(cuid())
+  workflowId     String
+  cronExpression String
+  timezone       String    @default("UTC")
+  active         Boolean   @default(true)
+  lastRunAt      DateTime?
+  nextRunAt      DateTime?
+
+  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+}
+
+model McpServerConfig {
+  id        String  @id @default(cuid())
+  name      String
+  transport String  // "stdio" | "http"
+  command   String?
+  args      String  @default("[]")
+  url       String?
+  env       String  @default("{}")
 }

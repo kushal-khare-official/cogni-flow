@@ -25,7 +25,8 @@ import { EndEventNode } from "./nodes/EndEventNode";
 import { EventNode } from "./nodes/EventNode";
 import { TaskNode } from "./nodes/TaskNode";
 import { GatewayNode } from "./nodes/GatewayNode";
-import { ConnectorNode } from "./nodes/ConnectorNode";
+import { IntegrationNode } from "./nodes/IntegrationNode";
+import { WebhookTriggerNode } from "./nodes/WebhookTriggerNode";
 import { LogicNode } from "./nodes/LogicNode";
 import { ActionNode } from "./nodes/ActionNode";
 import { ConditionalEdge } from "./edges/ConditionalEdge";
@@ -36,7 +37,8 @@ const nodeTypes: NodeTypes = {
   eventNode: EventNode,
   taskNode: TaskNode,
   gatewayNode: GatewayNode,
-  connectorNode: ConnectorNode,
+  integrationNode: IntegrationNode,
+  webhookTriggerNode: WebhookTriggerNode,
   logicNode: LogicNode,
   actionNode: ActionNode,
 };

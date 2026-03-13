@@ -6,6 +6,7 @@ import { InspectorPanel } from "@/components/layout/InspectorPanel";
 import { WorkflowCanvas } from "@/components/canvas/WorkflowCanvas";
 import { ValidationPanel } from "@/components/validation/ValidationPanel";
 import { PublishDialog } from "@/components/publish/PublishDialog";
+import { ExecutionPanel } from "@/components/execution/ExecutionPanel";
 import { useUIStore } from "@/lib/store/ui-store";
 
 export default function Home() {
@@ -21,6 +22,7 @@ export default function Home() {
         <div className="relative flex-1">
           <WorkflowCanvas />
           {validationPanelOpen && <ValidationPanel />}
+          <ExecutionPanel />
         </div>
         {rightPanelOpen && <InspectorPanel />}
       </div>

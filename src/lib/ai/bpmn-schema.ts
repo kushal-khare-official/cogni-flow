@@ -6,7 +6,8 @@ const reactFlowNodeTypes = [
   "eventNode",
   "taskNode",
   "gatewayNode",
-  "connectorNode",
+  "integrationNode",
+  "webhookTriggerNode",
   "logicNode",
   "actionNode",
 ] as const;
@@ -25,14 +26,8 @@ const bpmnNodeTypes = [
   "exclusiveGateway",
   "parallelGateway",
   "inclusiveGateway",
-  "kafkaConnector",
-  "postgresConnector",
-  "stripeConnector",
-  "salesforceConnector",
-  "sapConnector",
-  "keycloakConnector",
-  "prometheusConnector",
-  "rpaConnector",
+  "integration",
+  "webhookTrigger",
   "loop",
   "wait",
   "splitPath",
@@ -62,6 +57,8 @@ const bpmnNodeSchema = z.object({
       )
       .nullable()
       .describe("Gateway condition mappings for outgoing edges"),
+    integrationTemplateId: z.string().nullable().describe("Integration template ID for integration nodes"),
+    operationId: z.string().nullable().describe("Operation ID from the integration template"),
   }),
 });
 
