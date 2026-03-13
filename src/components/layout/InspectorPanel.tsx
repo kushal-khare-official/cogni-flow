@@ -49,7 +49,7 @@ export function InspectorPanel() {
 
   return (
     <aside
-      className="relative flex flex-shrink-0 flex-col border-l border-zinc-200 bg-white"
+      className="relative flex min-h-0 flex-shrink-0 flex-col border-l border-zinc-200 bg-white"
       style={{ width: rightPanelWidth }}
     >
       {/* Resize handle */}
@@ -69,7 +69,7 @@ export function InspectorPanel() {
         onValueChange={(val) =>
           setRightPanelTab(val as "properties" | "chat")
         }
-        className="flex flex-1 flex-col"
+        className="flex min-h-0 flex-1 flex-col"
       >
         <div className="border-b border-zinc-100 px-2 pt-1">
           <TabsList className="w-full">
@@ -94,7 +94,7 @@ export function InspectorPanel() {
         </TabsContent>
         <TabsContent
           value="chat"
-          className="mt-0 flex min-h-0 flex-1 flex-col data-[hidden]:hidden"
+          className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden data-[hidden]:hidden"
           keepMounted
         >
           <WorkflowChat />
