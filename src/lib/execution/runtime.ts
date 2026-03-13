@@ -5,6 +5,12 @@ import { resolveExpression, resolveTemplate, evaluateCondition } from "./express
 import { dispatchExecutor, type IntegrationType, type ExecutionMode } from "./executor-registry";
 import { prisma } from "@/lib/db";
 import { resolveCredential } from "@/lib/credentials/store";
+import {
+  findLoopBackEdge,
+  collectLoopBody,
+  findLoopExitEdge,
+  shouldLoopContinue,
+} from "../workflow/loop-utils";
 
 const MAX_STEPS = 200;
 const GATEWAY_TYPES = new Set([
@@ -78,6 +84,14 @@ export async function executeWorkflow(
         const nodeInput = gatherInputs(currentNodeId, edges, ctx);
         output = nodeInput;
         decision = undefined;
+      } else if (bpmnType === BpmnNodeType.Loop) {
+        const nodeInput = gatherInputs(currentNodeId, edges, ctx);
+        const iteration = (typeof nodeInput.iteration === "number" ? nodeInput.iteration : 0) + 1;
+        const continuing = shouldLoopContinue(node, iteration);
+        output = { ...nodeInput, iteration, loopContinue: continuing };
+        decision = continuing
+          ? `Iteration ${iteration} — continuing`
+          : `Iteration ${iteration} — loop finished`;
       } else {
         const nodeInput = gatherInputs(currentNodeId, edges, ctx);
         output = { ...nodeInput, [`${node.data.label}_processed`]: true };
@@ -147,6 +161,15 @@ export async function executeWorkflow(
     const outgoing = edges.filter((e) => e.source === currentNodeId);
     if (outgoing.length === 0) {
       currentNodeId = null;
+    } else if (bpmnType === BpmnNodeType.Loop) {
+      const continuing = output.loopContinue as boolean;
+      if (continuing) {
+        const body = collectLoopBody(currentNodeId, nodes, edges);
+        currentNodeId = body.length > 0 ? body[0] : outgoing[0].target;
+      } else {
+        const exitEdge = findLoopExitEdge(currentNodeId, nodes, edges);
+        currentNodeId = exitEdge ? exitEdge.target : outgoing[0].target;
+      }
     } else if (bpmnType === BpmnNodeType.ExclusiveGateway) {
       let nextEdge = outgoing[0];
       for (const edge of outgoing) {
@@ -160,7 +183,12 @@ export async function executeWorkflow(
       trace[trace.length - 1].decision = decision;
       currentNodeId = nextEdge.target;
     } else {
-      currentNodeId = outgoing[0].target;
+      const backEdge = findLoopBackEdge(currentNodeId, edges);
+      if (backEdge && backEdge.source === currentNodeId) {
+        currentNodeId = backEdge.target;
+      } else {
+        currentNodeId = outgoing[0].target;
+      }
     }
   }
 
