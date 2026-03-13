@@ -6,6 +6,7 @@ import { X, Plus, Circle } from "lucide-react";
 import type { BpmnNode } from "@/lib/workflow/types";
 import { BpmnNodeType } from "@/lib/workflow/types";
 import { cn } from "@/lib/utils";
+import { ExecutionStatusOverlay } from "./ExecutionStatusOverlay";
 
 const GATEWAY_ICONS: Record<string, React.ElementType> = {
   [BpmnNodeType.ExclusiveGateway]: X,
@@ -18,7 +19,7 @@ function GatewayNodeComponent({ data, selected }: NodeProps<BpmnNode>) {
   const status = data.executionStatus;
 
   return (
-    <div className="flex flex-col items-center gap-1">
+    <div className="relative flex flex-col items-center gap-1">
       <Handle
         type="target"
         position={Position.Top}
@@ -54,6 +55,7 @@ function GatewayNodeComponent({ data, selected }: NodeProps<BpmnNode>) {
       <span className="max-w-24 truncate text-center text-xs font-medium text-slate-700">
         {data.label}
       </span>
+      <ExecutionStatusOverlay data={data} />
     </div>
   );
 }

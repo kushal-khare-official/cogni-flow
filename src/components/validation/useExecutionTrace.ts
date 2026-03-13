@@ -23,14 +23,24 @@ export function useExecutionTrace(
   const resetAllNodes = useCallback(() => {
     const currentNodes = useWorkflowStore.getState().nodes;
     const needsReset = currentNodes.some(
-      (n) => n.data.executionStatus && n.data.executionStatus !== "idle"
+      (n) =>
+        (n.data.executionStatus && n.data.executionStatus !== "idle") ||
+        n.data.executionInput !== undefined ||
+        n.data.executionOutput !== undefined ||
+        n.data.executionCount !== undefined
     );
     if (!needsReset) return;
 
     useWorkflowStore.setState({
       nodes: currentNodes.map((n) => ({
         ...n,
-        data: { ...n.data, executionStatus: "idle" as const },
+        data: {
+          ...n.data,
+          executionStatus: "idle" as const,
+          executionInput: undefined,
+          executionOutput: undefined,
+          executionCount: undefined,
+        },
       })),
     });
   }, []);
@@ -68,17 +78,48 @@ export function useExecutionTrace(
 
     setIsAnimating(true);
 
-    let cumulativeDelay = 100;
     const trace = match.trace;
 
+    // Compute per-node execution counts from trace (for loop steps)
+    const countByNodeId = new Map<string, number>();
+    for (const step of trace) {
+      countByNodeId.set(
+        step.nodeId,
+        (countByNodeId.get(step.nodeId) ?? 0) + 1
+      );
+    }
+
+    // Apply execution counts to all nodes up front
+    useWorkflowStore.setState((state) => ({
+      nodes: state.nodes.map((n) => {
+        const count = countByNodeId.get(n.id);
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            executionCount: count,
+          },
+        };
+      }),
+    }));
+
+    let cumulativeDelay = 100;
+
     trace.forEach((step, idx) => {
-      // Mark node as "running" at the start of this step
+      // Mark node as "running" at the start of this step (with input)
       const runTimeout = setTimeout(() => {
         setCurrentStepIndex(idx);
         useWorkflowStore.setState((state) => ({
           nodes: state.nodes.map((n) =>
             n.id === step.nodeId
-              ? { ...n, data: { ...n.data, executionStatus: "running" as const } }
+              ? {
+                  ...n,
+                  data: {
+                    ...n.data,
+                    executionStatus: "running" as const,
+                    executionInput: step.input,
+                  },
+                }
               : n
           ),
         }));
@@ -87,12 +128,20 @@ export function useExecutionTrace(
 
       const stepDuration = clampDuration(step.duration);
 
-      // Mark node as "completed" after its duration
+      // Mark node as "completed" after its duration (with output)
       const completeTimeout = setTimeout(() => {
         useWorkflowStore.setState((state) => ({
           nodes: state.nodes.map((n) =>
             n.id === step.nodeId
-              ? { ...n, data: { ...n.data, executionStatus: "completed" as const } }
+              ? {
+                  ...n,
+                  data: {
+                    ...n.data,
+                    executionStatus: "completed" as const,
+                    executionInput: step.input,
+                    executionOutput: step.output,
+                  },
+                }
               : n
           ),
         }));
