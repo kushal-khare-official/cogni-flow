@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
 export async function GET() {
-  const templates = await prisma.integrationTemplate.findMany({ orderBy: { name: "asc" } });
-  return NextResponse.json({ templates });
+  const integrations = await prisma.integrationTemplate.findMany({ orderBy: { name: "asc" } });
+  return NextResponse.json({ integrations });
 }
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const template = await prisma.integrationTemplate.create({
+  const integration = await prisma.integrationTemplate.create({
     data: {
       name: body.name,
       icon: body.icon ?? "plug",
@@ -22,5 +22,5 @@ export async function POST(request: NextRequest) {
       isBuiltIn: false,
     }
   });
-  return NextResponse.json(template, { status: 201 });
+  return NextResponse.json(integration, { status: 201 });
 }

@@ -24,7 +24,7 @@ Each node has a \`bpmnType\` (the BPMN semantic type) and a \`type\` (the React 
 - inclusiveGateway -> gatewayNode (OR: one or more paths taken)
 
 ### Integrations
-- integration -> integrationNode (data-driven integration: Stripe, Keycloak, SAP, Salesforce, Prometheus, RPA, MCP Tools, or custom HTTP/code)
+- integration -> integrationNode (external service integration using a template)
 - webhookTrigger -> webhookTriggerNode (webhook-based workflow start)
 
 ### Logic
@@ -54,7 +54,17 @@ Each node has a \`bpmnType\` (the BPMN semantic type) and a \`type\` (the React 
 - All edges must use type "conditional".
 - Gateway nodes MUST have multiple outgoing edges. Each outgoing edge should have a descriptive label in data.label and an expression in data.condition.
 - Gateway nodes should include a \`conditions\` array in their data mapping each outgoing edgeId to its expression.
-- For integration nodes, set data.integrationTemplateId to a known template ID (e.g. "tpl-stripe", "tpl-keycloak", "tpl-salesforce", "tpl-sap", "tpl-prometheus", "tpl-rpa", "tpl-mcp") and data.operationId to the operation.
+- For integration nodes: if an existing integration fits, set data.integrationTemplateId to its ID and data.operationId to the operation. If no existing integration fits, populate the newIntegration field to create one on the fly.
+- The newIntegration field should specify: name, type (one of "http", "webhook", "mcp_tool", "code", "kafka"), category, description, and baseConfig as key-value pairs. The system will auto-create the integration and link it.
+
+## Integration Types
+
+- **http** — REST API: call any HTTP/REST endpoint (GET, POST, PUT, PATCH, DELETE)
+- **webhook** — REST API + Webhook Callback: call an API that sends results back via webhook
+- **mcp_tool** — MCP Tool Call: invoke tools from a Model Context Protocol server
+- **code** — Custom Code Script: execute JavaScript or Python code inline
+- **kafka** — Kafka Topic Consumer: consume messages from a Kafka topic
+
 - Provide a clear, concise label for every node.
 - Include a brief description for non-trivial nodes.`;
 

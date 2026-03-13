@@ -19,7 +19,7 @@ import { useExecutionStore } from "@/lib/store/execution-store";
 export function RunDialog() {
   const [open, setOpen] = useState(false);
   const [inputJson, setInputJson] = useState("{}");
-  const [liveMode, setLiveMode] = useState(false);
+  const [liveMode, setLiveMode] = useState(true);
 
   const workflowId = useWorkflowStore((s) => s.id);
   const nodes = useWorkflowStore((s) => s.nodes);

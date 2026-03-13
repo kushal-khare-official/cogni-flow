@@ -310,7 +310,7 @@ async function executeIntegrationNode(
   ctx.set("_inputs", resolvedInputs);
 
   const effectiveMode: ExecutionMode =
-    type === "webhook" ? "live" : mode === "live" && credential ? "live" : "mock";
+    type === "webhook" ? "live" : mode;
 
   return dispatchExecutor(type, effectiveMode, {
     webhookPassthrough: type === "webhook"
@@ -337,6 +337,12 @@ async function executeIntegrationNode(
       code: operation?.codeTemplate ?? (node.data.code as string) ?? "",
       ctx: ctx.toJSON(),
       language: baseConfig.language ?? "javascript",
+    } : undefined,
+    kafkaParams: type === "kafka" ? {
+      brokers: baseConfig.brokers,
+      topic: baseConfig.topic ?? resolvedInputs.topic,
+      groupId: baseConfig.groupId ?? resolvedInputs.groupId,
+      ...resolvedInputs,
     } : undefined,
     mockConfig,
     operationId: operation?.id,

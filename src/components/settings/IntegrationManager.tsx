@@ -26,21 +26,18 @@ import {
 import { useIntegrationStore } from "@/lib/store/integration-store";
 
 const INTEGRATION_TYPES = [
-  { value: "http", label: "HTTP / REST API" },
-  { value: "webhook", label: "HTTP Webhook" },
-  { value: "mcp_tool", label: "MCP Tool" },
-  { value: "code", label: "Custom Code" },
+  { value: "http", label: "REST API" },
+  { value: "webhook", label: "REST API + Webhook Callback" },
+  { value: "mcp_tool", label: "MCP Tool Call" },
+  { value: "code", label: "Custom Code Script" },
+  { value: "kafka", label: "Kafka Topic Consumer" },
 ] as const;
 
 const CATEGORIES = [
-  { value: "payments", label: "Payments" },
-  { value: "iam", label: "IAM / Auth" },
-  { value: "crm", label: "CRM" },
-  { value: "erp", label: "ERP" },
-  { value: "monitoring", label: "Monitoring" },
-  { value: "rpa", label: "RPA" },
-  { value: "mcp", label: "MCP" },
+  { value: "api", label: "API" },
   { value: "messaging", label: "Messaging" },
+  { value: "ai", label: "AI / MCP" },
+  { value: "code", label: "Code" },
   { value: "custom", label: "Custom" },
 ] as const;
 
@@ -91,6 +88,11 @@ export function IntegrationManager() {
   const [formCodeLanguage, setFormCodeLanguage] = useState("javascript");
   const [formCode, setFormCode] = useState("");
 
+  // Kafka fields
+  const [formKafkaBrokers, setFormKafkaBrokers] = useState("localhost:9092");
+  const [formKafkaTopic, setFormKafkaTopic] = useState("");
+  const [formKafkaGroupId, setFormKafkaGroupId] = useState("");
+
   // Raw operations JSON (fallback for advanced users)
   const [formOperationsJson, setFormOperationsJson] = useState("[]");
   const [showRawOps, setShowRawOps] = useState(false);
@@ -100,9 +102,9 @@ export function IntegrationManager() {
   const fetchIntegrations = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/integration-templates");
+      const res = await fetch("/api/integrations");
       const data = await res.json();
-      setIntegrations(data.templates ?? []);
+      setIntegrations(data.integrations ?? []);
     } catch {
       /* silent */
     } finally {
@@ -128,6 +130,9 @@ export function IntegrationManager() {
     setFormMcpCommand("");
     setFormCodeLanguage("javascript");
     setFormCode("");
+    setFormKafkaBrokers("localhost:9092");
+    setFormKafkaTopic("");
+    setFormKafkaGroupId("");
     setFormOperationsJson("[]");
     setShowRawOps(false);
     setEditingId(null);
@@ -156,6 +161,10 @@ export function IntegrationManager() {
       );
     } else if (tpl.type === "mcp_tool") {
       setFormMcpCommand(base.command ?? "");
+    } else if (tpl.type === "kafka") {
+      setFormKafkaBrokers(base.brokers ?? "localhost:9092");
+      setFormKafkaTopic(base.topic ?? "");
+      setFormKafkaGroupId(base.groupId ?? "");
     } else if (tpl.type === "code") {
       setFormCodeLanguage(base.language ?? "javascript");
       const firstOp = ops[0] as Record<string, unknown> | undefined;
@@ -204,6 +213,19 @@ export function IntegrationManager() {
       if (showRawOps) {
         try { operations = JSON.parse(formOperationsJson); } catch { /* keep empty */ }
       }
+    } else if (formType === "kafka") {
+      baseConfig.brokers = formKafkaBrokers;
+      baseConfig.topic = formKafkaTopic;
+      baseConfig.groupId = formKafkaGroupId;
+      operations = [{
+        id: "consume",
+        name: "Consume Messages",
+        inputSchema: [
+          { key: "topic", label: "Topic", type: "string", required: true },
+          { key: "groupId", label: "Consumer Group ID", type: "string", required: true },
+          { key: "brokers", label: "Brokers", type: "string", required: true },
+        ],
+      }];
     } else if (formType === "code") {
       baseConfig.language = formCodeLanguage;
       operations = [{
@@ -230,13 +252,13 @@ export function IntegrationManager() {
     };
 
     if (editingId) {
-      await fetch(`/api/integration-templates/${editingId}`, {
+      await fetch(`/api/integrations/${editingId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
     } else {
-      await fetch("/api/integration-templates", {
+      await fetch("/api/integrations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -273,7 +295,7 @@ export function IntegrationManager() {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Plug className="size-4" />
-            Integration Templates
+            Integrations
           </DialogTitle>
         </DialogHeader>
 
@@ -289,41 +311,58 @@ export function IntegrationManager() {
                 )}
                 {!loading && integrations.length === 0 && (
                   <p className="py-6 text-center text-sm text-zinc-400">
-                    No integration templates yet.
+                    No integrations yet.
                   </p>
                 )}
-                {integrations.map((tpl) => (
-                  <div
-                    key={tpl.id}
-                    className="flex items-center justify-between rounded-lg border border-zinc-200 px-3 py-2 dark:border-zinc-800"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="truncate text-sm font-medium">{tpl.name}</p>
-                        {tpl.isBuiltIn && (
-                          <Badge variant="secondary" className="text-[9px] shrink-0">
-                            Built-in
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="mt-0.5 flex items-center gap-1.5">
-                        <Badge variant="outline" className="text-[9px]">{tpl.type}</Badge>
-                        <Badge variant="outline" className="text-[9px]">{tpl.category}</Badge>
-                      </div>
-                      {tpl.description && (
-                        <p className="mt-1 truncate text-[11px] text-zinc-400">{tpl.description}</p>
-                      )}
+                {(() => {
+                  const grouped = new Map<string, Template[]>();
+                  for (const tpl of integrations) {
+                    const cat = tpl.category || "custom";
+                    if (!grouped.has(cat)) grouped.set(cat, []);
+                    grouped.get(cat)!.push(tpl);
+                  }
+                  const categoryLabel = (cat: string) =>
+                    CATEGORIES.find((c) => c.value === cat)?.label ?? cat;
+
+                  return Array.from(grouped.entries()).map(([cat, templates]) => (
+                    <div key={cat} className="space-y-1.5">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 pt-1">
+                        {categoryLabel(cat)}
+                      </p>
+                      {templates.map((tpl) => (
+                        <div
+                          key={tpl.id}
+                          className="flex items-center justify-between rounded-lg border border-zinc-200 px-3 py-2 dark:border-zinc-800"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <p className="truncate text-sm font-medium">{tpl.name}</p>
+                              {tpl.isBuiltIn && (
+                                <Badge variant="secondary" className="text-[9px] shrink-0">
+                                  Built-in
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="mt-0.5 flex items-center gap-1.5">
+                              <Badge variant="outline" className="text-[9px]">{tpl.type}</Badge>
+                            </div>
+                            {tpl.description && (
+                              <p className="mt-1 truncate text-[11px] text-zinc-400">{tpl.description}</p>
+                            )}
+                          </div>
+                          <div className="ml-2 flex items-center gap-1 shrink-0">
+                            <Button variant="ghost" size="icon-sm" onClick={() => startEdit(tpl)} className="text-zinc-400 hover:text-zinc-600">
+                              <Pencil className="size-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon-sm" onClick={() => handleDelete(tpl.id)} className="text-zinc-400 hover:text-red-500">
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    <div className="ml-2 flex items-center gap-1 shrink-0">
-                      <Button variant="ghost" size="icon-sm" onClick={() => startEdit(tpl)} className="text-zinc-400 hover:text-zinc-600">
-                        <Pencil className="size-3.5" />
-                      </Button>
-                      <Button variant="ghost" size="icon-sm" onClick={() => handleDelete(tpl.id)} className="text-zinc-400 hover:text-red-500">
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                  ));
+                })()}
               </div>
             </ScrollArea>
             <Button onClick={startCreate} className="mt-2 gap-1.5 text-xs" variant="outline">
@@ -482,6 +521,27 @@ export function IntegrationManager() {
                   <div className="space-y-1.5">
                     <Label className="text-xs">Operations <span className="font-normal text-zinc-400">(JSON array)</span></Label>
                     <Textarea value={formOperationsJson} onChange={(e) => setFormOperationsJson(e.target.value)} rows={5} className="resize-none font-mono text-xs" placeholder='[{"id":"tool1","name":"Search","toolName":"search_web"}]' />
+                  </div>
+                </div>
+              )}
+
+              {/* ─── KAFKA CONFIG ─── */}
+              {formType === "kafka" && (
+                <div className="space-y-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Kafka Configuration</p>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Brokers <span className="font-normal text-zinc-400">(comma-separated)</span></Label>
+                    <Input value={formKafkaBrokers} onChange={(e) => setFormKafkaBrokers(e.target.value)} placeholder="localhost:9092" className="font-mono text-sm" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Topic</Label>
+                      <Input value={formKafkaTopic} onChange={(e) => setFormKafkaTopic(e.target.value)} placeholder="my-topic" className="font-mono text-sm" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Consumer Group ID</Label>
+                      <Input value={formKafkaGroupId} onChange={(e) => setFormKafkaGroupId(e.target.value)} placeholder="my-consumer-group" className="font-mono text-sm" />
+                    </div>
                   </div>
                 </div>
               )}

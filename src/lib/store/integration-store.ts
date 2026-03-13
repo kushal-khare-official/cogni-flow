@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export interface IntegrationTemplateRecord {
+export interface IntegrationRecord {
   id: string;
   name: string;
   icon: string;
@@ -15,28 +15,28 @@ export interface IntegrationTemplateRecord {
 }
 
 interface IntegrationStore {
-  templates: IntegrationTemplateRecord[];
+  integrations: IntegrationRecord[];
   loading: boolean;
   loaded: boolean;
 
-  fetchTemplates: () => Promise<void>;
+  fetchIntegrations: () => Promise<void>;
   invalidateAndRefetch: () => Promise<void>;
-  getTemplate: (id: string) => IntegrationTemplateRecord | undefined;
+  getIntegration: (id: string) => IntegrationRecord | undefined;
 }
 
 export const useIntegrationStore = create<IntegrationStore>((set, get) => ({
-  templates: [],
+  integrations: [],
   loading: false,
   loaded: false,
 
-  fetchTemplates: async () => {
+  fetchIntegrations: async () => {
     if (get().loaded || get().loading) return;
     set({ loading: true });
     try {
-      const res = await fetch("/api/integration-templates");
+      const res = await fetch("/api/integrations");
       if (res.ok) {
         const data = await res.json();
-        set({ templates: data.templates ?? data, loaded: true });
+        set({ integrations: data.integrations ?? data, loaded: true });
       }
     } catch {
       // silently fail, will retry later
@@ -51,10 +51,10 @@ export const useIntegrationStore = create<IntegrationStore>((set, get) => ({
     if (store.loading) return;
     set({ loading: true });
     try {
-      const res = await fetch("/api/integration-templates");
+      const res = await fetch("/api/integrations");
       if (res.ok) {
         const data = await res.json();
-        set({ templates: data.templates ?? data, loaded: true });
+        set({ integrations: data.integrations ?? data, loaded: true });
       }
     } catch {
       // silently fail
@@ -63,7 +63,7 @@ export const useIntegrationStore = create<IntegrationStore>((set, get) => ({
     }
   },
 
-  getTemplate: (id: string) => {
-    return get().templates.find((t) => t.id === id);
+  getIntegration: (id: string) => {
+    return get().integrations.find((t) => t.id === id);
   },
 }));

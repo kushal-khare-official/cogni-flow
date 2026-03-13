@@ -3,7 +3,7 @@ import { executeMock } from "./executors/mock-executor";
 import { executeCode } from "./executors/code-executor";
 import { ExecutionContext } from "./context";
 
-export type IntegrationType = "http" | "mcp_tool" | "code" | "webhook";
+export type IntegrationType = "http" | "mcp_tool" | "code" | "webhook" | "kafka";
 export type ExecutionMode = "live" | "mock";
 
 interface MockConfig {
@@ -31,6 +31,7 @@ interface DispatchParams {
     language?: string;
   };
   webhookPassthrough?: Record<string, unknown>;
+  kafkaParams?: Record<string, unknown>;
   mockConfig?: MockConfig;
   operationId?: string;
 }
@@ -73,6 +74,10 @@ export async function dispatchExecutor(
 
     case "webhook": {
       return params.webhookPassthrough ?? {};
+    }
+
+    case "kafka": {
+      return params.kafkaParams ?? { message: "Kafka consumer placeholder — connect a real Kafka client" };
     }
 
     default:

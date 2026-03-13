@@ -9,15 +9,15 @@ import { useIntegrationStore } from "@/lib/store/integration-store";
 import { ExecutionStatusOverlay } from "./ExecutionStatusOverlay";
 
 function IntegrationNodeComponent({ data, selected }: NodeProps<BpmnNode>) {
-  const templates = useIntegrationStore((s) => s.templates);
-  const template = templates.find((t) => t.id === data.integrationTemplateId);
+  const integrations = useIntegrationStore((s) => s.integrations);
+  const integration = integrations.find((t) => t.id === data.integrationTemplateId);
   const status = data.executionStatus;
 
-  const displayName = template?.name ?? data.label;
+  const displayName = integration?.name ?? data.label;
   const operationLabel = data.operationId
     ? (() => {
-        if (!template) return data.operationId;
-        const ops = JSON.parse(template.operations || "[]") as { id: string; name: string }[];
+        if (!integration) return data.operationId;
+        const ops = JSON.parse(integration.operations || "[]") as { id: string; name: string }[];
         return ops.find((o) => o.id === data.operationId)?.name ?? data.operationId;
       })()
     : null;

@@ -25,7 +25,9 @@ import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -66,12 +68,12 @@ export function NodeInspector() {
   const deleteNode = useWorkflowStore((s) => s.deleteNode);
   const selectNode = useWorkflowStore((s) => s.selectNode);
 
-  const templates = useIntegrationStore((s) => s.templates);
-  const fetchTemplates = useIntegrationStore((s) => s.fetchTemplates);
+  const integrations = useIntegrationStore((s) => s.integrations);
+  const fetchIntegrations = useIntegrationStore((s) => s.fetchIntegrations);
 
   useEffect(() => {
-    fetchTemplates();
-  }, [fetchTemplates]);
+    fetchIntegrations();
+  }, [fetchIntegrations]);
 
   const node = nodes.find((n) => n.id === selectedNodeId);
 
@@ -98,18 +100,18 @@ export function NodeInspector() {
   const canUseIntegration = EXECUTABLE_CATEGORIES.has(category);
 
   const typeFilter = NODE_TYPE_FILTER[data.bpmnType];
-  const filteredTemplates = typeFilter
-    ? templates.filter((t) => t.type === typeFilter)
-    : templates;
+  const filteredIntegrations = typeFilter
+    ? integrations.filter((t) => t.type === typeFilter)
+    : integrations;
 
-  const selectedTemplate = data.integrationTemplateId
-    ? templates.find((t) => t.id === data.integrationTemplateId)
+  const selectedIntegration = data.integrationTemplateId
+    ? integrations.find((t) => t.id === data.integrationTemplateId)
     : undefined;
 
-  const templateType = selectedTemplate?.type;
+  const integrationType = selectedIntegration?.type;
 
-  const operations: OperationDef[] = selectedTemplate
-    ? (JSON.parse(selectedTemplate.operations || "[]") as OperationDef[])
+  const operations: OperationDef[] = selectedIntegration
+    ? (JSON.parse(selectedIntegration.operations || "[]") as OperationDef[])
     : [];
 
   const selectedOperation = data.operationId
@@ -247,9 +249,9 @@ export function NodeInspector() {
           <div className="space-y-3">
             <Label className="text-xs font-semibold text-zinc-600">Integration</Label>
 
-            {/* Template selector */}
+            {/* Integration selector */}
             <div className="space-y-1.5">
-              <Label className="text-xs text-zinc-500">Template</Label>
+              <Label className="text-xs text-zinc-500">Integration</Label>
               <Select
                 value={data.integrationTemplateId ?? ""}
                 onValueChange={(val) =>
@@ -267,21 +269,36 @@ export function NodeInspector() {
                   <SelectItem value="">
                     <span className="text-zinc-400">None</span>
                   </SelectItem>
-                  {filteredTemplates.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      <span className="flex items-center gap-1.5">
-                        {t.name}
-                        <Badge variant="outline" className="ml-1 text-[9px] font-normal">
-                          {t.type}
-                        </Badge>
-                      </span>
-                    </SelectItem>
-                  ))}
+                  {(() => {
+                    const grouped = new Map<string, typeof filteredIntegrations>();
+                    for (const t of filteredIntegrations) {
+                      const cat = t.category || "custom";
+                      if (!grouped.has(cat)) grouped.set(cat, []);
+                      grouped.get(cat)!.push(t);
+                    }
+                    return Array.from(grouped.entries()).map(([cat, tpls]) => (
+                      <SelectGroup key={cat}>
+                        <SelectLabel className="text-[10px] uppercase tracking-wider text-zinc-400">
+                          {cat}
+                        </SelectLabel>
+                        {tpls.map((t) => (
+                          <SelectItem key={t.id} value={t.id}>
+                            <span className="flex items-center gap-1.5">
+                              {t.name}
+                              <Badge variant="outline" className="ml-1 text-[9px] font-normal">
+                                {t.type}
+                              </Badge>
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    ));
+                  })()}
                 </SelectContent>
               </Select>
             </div>
 
-            {selectedTemplate && (
+            {selectedIntegration && (
               <>
                 {/* Operation selector */}
                 {operations.length > 1 && (
@@ -308,21 +325,21 @@ export function NodeInspector() {
                   </div>
                 )}
 
-                {/* Template summary (read-only) */}
+                {/* Integration summary (read-only) */}
                 <div className="rounded-md border border-zinc-100 bg-zinc-50 p-2 text-[11px] text-zinc-500">
-                  <span className="font-medium text-zinc-600">{selectedTemplate.name}</span>
+                  <span className="font-medium text-zinc-600">{selectedIntegration.name}</span>
                   <span className="mx-1">·</span>
-                  <Badge variant="outline" className="text-[9px]">{selectedTemplate.type}</Badge>
-                  {templateType === "http" && selectedOperation?.method && (
+                  <Badge variant="outline" className="text-[9px]">{selectedIntegration.type}</Badge>
+                  {integrationType === "http" && selectedOperation?.method && (
                     <>
                       <span className="mx-1">·</span>
                       <span className="font-mono">{selectedOperation.method} {selectedOperation.path}</span>
                     </>
                   )}
-                  {templateType === "code" && (
+                  {integrationType === "code" && (
                     <>
                       <span className="mx-1">·</span>
-                      <span>{(() => { try { return JSON.parse(selectedTemplate.baseConfig)?.language ?? "javascript"; } catch { return "javascript"; } })()}</span>
+                      <span>{(() => { try { return JSON.parse(selectedIntegration.baseConfig)?.language ?? "javascript"; } catch { return "javascript"; } })()}</span>
                     </>
                   )}
                   <p className="mt-0.5 text-[10px] text-zinc-400">
@@ -331,7 +348,7 @@ export function NodeInspector() {
                 </div>
 
                 {/* Webhook properties */}
-                {templateType === "webhook" && (
+                {integrationType === "webhook" && (
                   <WebhookProperties data={data} />
                 )}
 
