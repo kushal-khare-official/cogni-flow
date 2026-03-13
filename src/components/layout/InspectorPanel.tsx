@@ -1,6 +1,7 @@
 "use client";
 
-import { MessageSquare, SlidersHorizontal } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { MessageSquare, SlidersHorizontal, GripVertical } from "lucide-react";
 import {
   Tabs,
   TabsList,
@@ -15,9 +16,54 @@ import { WorkflowChat } from "@/components/inspector/WorkflowChat";
 export function InspectorPanel() {
   const rightPanelTab = useUIStore((s) => s.rightPanelTab);
   const setRightPanelTab = useUIStore((s) => s.setRightPanelTab);
+  const rightPanelWidth = useUIStore((s) => s.rightPanelWidth);
+  const setRightPanelWidth = useUIStore((s) => s.setRightPanelWidth);
+  const [isResizing, setIsResizing] = useState(false);
+
+  const handleMouseMove = useCallback(
+    (e: MouseEvent) => {
+      if (!isResizing) return;
+      const newWidth = window.innerWidth - e.clientX;
+      setRightPanelWidth(newWidth);
+    },
+    [isResizing, setRightPanelWidth]
+  );
+
+  const handleMouseUp = useCallback(() => {
+    setIsResizing(false);
+  }, []);
+
+  useEffect(() => {
+    if (!isResizing) return;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isResizing, handleMouseMove, handleMouseUp]);
 
   return (
-    <aside className="flex w-72 flex-shrink-0 flex-col border-l border-zinc-200 bg-white">
+    <aside
+      className="relative flex flex-shrink-0 flex-col border-l border-zinc-200 bg-white"
+      style={{ width: rightPanelWidth }}
+    >
+      {/* Resize handle */}
+      <button
+        type="button"
+        aria-label="Resize panel"
+        className="absolute left-0 top-0 z-10 flex h-full w-2 -translate-x-1/2 cursor-col-resize items-center justify-center border-0 bg-transparent hover:bg-zinc-100/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
+        onMouseDown={(e) => {
+          e.preventDefault();
+          setIsResizing(true);
+        }}
+      >
+        <GripVertical className="pointer-events-none size-4 text-zinc-400" />
+      </button>
       <Tabs
         value={rightPanelTab}
         onValueChange={(val) =>
@@ -38,14 +84,21 @@ export function InspectorPanel() {
           </TabsList>
         </div>
 
-        <ScrollArea className="flex-1">
-          <TabsContent value="properties" className="mt-0 flex-1">
+        <TabsContent
+          value="properties"
+          className="mt-0 flex min-h-0 flex-1 flex-col data-[hidden]:hidden"
+        >
+          <ScrollArea className="flex min-h-0 flex-1 flex-col">
             <NodeInspector />
-          </TabsContent>
-          <TabsContent value="chat" className="mt-0 flex-1">
-            <WorkflowChat />
-          </TabsContent>
-        </ScrollArea>
+          </ScrollArea>
+        </TabsContent>
+        <TabsContent
+          value="chat"
+          className="mt-0 flex min-h-0 flex-1 flex-col data-[hidden]:hidden"
+          keepMounted
+        >
+          <WorkflowChat />
+        </TabsContent>
       </Tabs>
     </aside>
   );
