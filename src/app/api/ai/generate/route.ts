@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateObject } from "ai";
-import { getModel, type Provider } from "@/lib/ai/providers";
+import { getModel, resolveProvider, type Provider } from "@/lib/ai/providers";
 import { bpmnWorkflowSchema } from "@/lib/ai/bpmn-schema";
 import { BPMN_SYSTEM_PROMPT } from "@/lib/ai/prompts";
 
 export async function POST(request: NextRequest) {
   try {
-    const { prompt, provider = "openai" } = (await request.json()) as {
+    const { prompt, provider } = (await request.json()) as {
       prompt: string;
       provider?: Provider;
     };
@@ -18,8 +18,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const effectiveProvider = resolveProvider(provider);
     const result = await generateObject({
-      model: getModel(provider),
+      model: getModel(effectiveProvider),
       schema: bpmnWorkflowSchema,
       system: BPMN_SYSTEM_PROMPT,
       prompt,

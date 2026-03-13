@@ -60,7 +60,7 @@ export function WorkflowChat() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [input, setInput] = useState("");
 
-  const { messages, sendMessage, status } = useChat({
+  const { messages, sendMessage, status, error, clearError } = useChat({
     transport: new DefaultChatTransport({
       api: "/api/ai/chat",
       body: {
@@ -167,10 +167,14 @@ export function WorkflowChat() {
   }
 
   return (
-    <div className="flex h-full flex-col">
-      {/* Messages */}
-      <ScrollArea className="flex-1">
-        <div ref={scrollRef} className="flex flex-col gap-3 p-3">
+    <div className="flex h-full min-h-0 flex-col">
+      {/* Messages - same draggable ScrollArea as node palette; wrapper enforces height so scrollbar appears */}
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <ScrollArea
+          viewportRef={scrollRef}
+          className="h-full"
+        >
+          <div className="flex flex-col gap-3 py-3 pl-3 pr-2">
           {messages.length === 0 && (
             <div className="flex flex-col items-center gap-2 py-8 text-center">
               <div className="flex size-10 items-center justify-center rounded-full bg-zinc-100">
@@ -237,8 +241,26 @@ export function WorkflowChat() {
               <span className="text-xs text-zinc-400">Thinking…</span>
             </div>
           )}
-        </div>
-      </ScrollArea>
+
+          {error && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+              <p className="font-medium">Something went wrong</p>
+              <p className="mt-0.5 text-xs text-red-600">
+                {error.message}
+              </p>
+              <Button
+                variant="outline"
+                size="xs"
+                className="mt-2 border-red-200 text-red-700 hover:bg-red-100"
+                onClick={() => clearError()}
+              >
+                Dismiss
+              </Button>
+            </div>
+          )}
+          </div>
+        </ScrollArea>
+      </div>
 
       {/* Input */}
       <div className="border-t border-zinc-100 p-3">

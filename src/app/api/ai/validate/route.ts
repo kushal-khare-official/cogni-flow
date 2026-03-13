@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateObject } from "ai";
 import { z } from "zod";
-import { getModel, type Provider } from "@/lib/ai/providers";
+import { getModel, resolveProvider, type Provider } from "@/lib/ai/providers";
 import { VALIDATION_SYSTEM_PROMPT } from "@/lib/ai/prompts";
 
 const testInputsSchema = z.object({
@@ -15,7 +15,7 @@ const testInputsSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const { workflow, provider = "openai" } = (await request.json()) as {
+    const { workflow, provider } = (await request.json()) as {
       workflow: { nodes: unknown[]; edges: unknown[] };
       provider?: Provider;
     };
@@ -27,8 +27,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const effectiveProvider = resolveProvider(provider);
     const result = await generateObject({
-      model: getModel(provider),
+      model: getModel(effectiveProvider),
       schema: testInputsSchema,
       system: VALIDATION_SYSTEM_PROMPT,
       prompt:
