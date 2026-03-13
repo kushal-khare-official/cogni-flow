@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
       try {
         send("run_started", { runId: run.id });
 
-        const result = await executeWorkflow(workflowId, nodes, edges, input ?? {}, mode ?? "mock", {
+        const result = await executeWorkflow(workflowId, nodes, edges, input ?? {}, mode ?? "live", {
           onNodeStart: (nodeId) => send("node_start", { nodeId }),
           onNodeComplete: (nodeId, output) => send("node_complete", { nodeId, output }),
           onNodeError: (nodeId, error) => send("node_error", { nodeId, error }),

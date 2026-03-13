@@ -36,7 +36,9 @@ export const useExecutionStore = create<ExecutionStore>((set) => ({
   setIsExecuting: (v) => set({ isExecuting: v }),
   setActiveRun: (run) => set({ activeRun: run }),
   addToHistory: (run) =>
-    set((s) => ({ history: [run, ...s.history].slice(0, 50) })),
+    set((s) => ({
+      history: [run, ...s.history.filter((r) => r.id !== run.id)].slice(0, 50),
+    })),
   setHistory: (runs) => set({ history: runs }),
   setExecutionPanelOpen: (open) => set({ executionPanelOpen: open }),
 }));

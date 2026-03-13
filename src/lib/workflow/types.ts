@@ -20,7 +20,7 @@ export enum BpmnNodeType {
   ParallelGateway = "parallelGateway",
   InclusiveGateway = "inclusiveGateway",
 
-  // Integration (data-driven, references IntegrationTemplate in DB)
+  // Integration (data-driven, references an integration record in DB)
   Integration = "integration",
 
   // Triggers

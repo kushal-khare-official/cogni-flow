@@ -1,11 +1,12 @@
 import type { BpmnNode, BpmnEdge, ValidationResult } from "./types";
 import { BpmnNodeType } from "./types";
-import { simulateWorkflow } from "./engine";
+import { executeWorkflow } from "@/lib/execution/runtime";
 
 export async function runValidation(
   nodes: BpmnNode[],
   edges: BpmnEdge[],
   testInputs: { name: string; data: Record<string, unknown> }[],
+  workflowId?: string,
 ): Promise<ValidationResult[]> {
   const totalNodes = nodes.length;
   const results: ValidationResult[] = [];
@@ -16,14 +17,22 @@ export async function runValidation(
     let trace: ValidationResult["trace"] = [];
 
     try {
-      trace = await simulateWorkflow(nodes, edges, testInput.data);
+      const execResult = await executeWorkflow(
+        workflowId ?? "validation",
+        nodes,
+        edges,
+        testInput.data,
+        "live",
+      );
+      trace = execResult.trace;
+      error = execResult.error;
 
       const reachedEnd = trace.some((step) => {
         const node = nodes.find((n) => n.id === step.nodeId);
         return node?.data.bpmnType === BpmnNodeType.EndEvent;
       });
 
-      result = reachedEnd ? "pass" : "fail";
+      result = error ? "error" : reachedEnd ? "pass" : "fail";
     } catch (err) {
       result = "error";
       error = err instanceof Error ? err.message : String(err);

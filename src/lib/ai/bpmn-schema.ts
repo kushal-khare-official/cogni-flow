@@ -57,8 +57,15 @@ const bpmnNodeSchema = z.object({
       )
       .nullable()
       .describe("Gateway condition mappings for outgoing edges"),
-    integrationTemplateId: z.string().nullable().describe("Integration template ID for integration nodes"),
-    operationId: z.string().nullable().describe("Operation ID from the integration template"),
+    integrationTemplateId: z.string().nullable().describe("Existing integration ID, or null if creating a new one via newIntegration"),
+    operationId: z.string().nullable().describe("Operation ID from the integration"),
+    newIntegration: z.object({
+      name: z.string().describe("Name for the new integration"),
+      type: z.enum(["http", "webhook", "mcp_tool", "code", "kafka"]).describe("Integration type"),
+      category: z.string().describe("Category label, e.g. api, messaging, ai, code, custom"),
+      description: z.string().describe("Brief description of what this integration does"),
+      baseConfig: z.array(z.object({ key: z.string(), value: z.string() })).describe("Base configuration key-value pairs (e.g. baseUrl, brokers, topic)"),
+    }).nullable().describe("Define a new integration if no existing one fits"),
   }),
 });
 

@@ -8,7 +8,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useWorkflowStore } from "@/lib/store/workflow-store";
 import { useUIStore } from "@/lib/store/ui-store";
 import { useValidationStore } from "./validation-store";
-import { runValidation } from "@/lib/workflow/validation";
 import type { ValidationResult } from "@/lib/workflow/types";
 import { TestDetailView } from "./TestDetailView";
 
@@ -21,6 +20,7 @@ export function ValidationPanel() {
   const selectedTestId = useValidationStore((s) => s.selectedTestId);
   const setSelectedTestId = useValidationStore((s) => s.setSelectedTestId);
 
+  const workflowId = useWorkflowStore((s) => s.id);
   const nodes = useWorkflowStore((s) => s.nodes);
   const edges = useWorkflowStore((s) => s.edges);
   const setValidationPanelOpen = useUIStore((s) => s.setValidationPanelOpen);
@@ -50,7 +50,16 @@ export function ValidationPanel() {
       }
 
       const { testInputs } = await res.json();
-      const validationResults = await runValidation(nodes, edges, testInputs);
+
+      const runRes = await fetch("/api/validate-run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nodes, edges, testInputs, workflowId }),
+      });
+      if (!runRes.ok) {
+        throw new Error(`Validation run returned ${runRes.status}`);
+      }
+      const { results: validationResults } = await runRes.json();
       setResults(validationResults);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Validation failed");
