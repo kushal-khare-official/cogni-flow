@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
-import { SlidersHorizontal, Trash2, Plus, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { SlidersHorizontal, Trash2, Plus, X, Send, Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { useWorkflowStore } from "@/lib/store/workflow-store";
 import { useIntegrationStore } from "@/lib/store/integration-store";
 import { getNodeIcon } from "@/lib/node-icons";
@@ -32,33 +32,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const EXECUTABLE_CATEGORIES = new Set(["tasks", "integrations", "actions"]);
-
-const NODE_TYPE_FILTER: Partial<Record<BpmnNodeType, string>> = {
-  [BpmnNodeType.ScriptTask]: "code",
-  [BpmnNodeType.ReceiveTask]: "webhook",
-};
-
 const IO_TYPES = ["string", "number", "boolean", "object", "array"] as const;
-
-interface IoField {
-  key: string;
-  type: string;
-  description?: string;
-}
-
-interface OperationDef {
-  id: string;
-  name: string;
-  method?: string;
-  path?: string;
-  bodyTemplate?: unknown;
-  queryTemplate?: Record<string, string>;
-  headersOverride?: Record<string, string>;
-  toolName?: string;
-  codeTemplate?: string;
-  inputSchema?: { key: string; label: string; type: string; required: boolean }[];
-}
 
 export function NodeInspector() {
   const nodes = useWorkflowStore((s) => s.nodes);
@@ -74,6 +48,15 @@ export function NodeInspector() {
   useEffect(() => {
     fetchIntegrations();
   }, [fetchIntegrations]);
+
+  const [testLoading, setTestLoading] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    status: number;
+    statusText: string;
+    body: string;
+    error?: string;
+  } | null>(null);
+  const [testToken, setTestToken] = useState("");
 
   const node = nodes.find((n) => n.id === selectedNodeId);
 
@@ -97,31 +80,24 @@ export function NodeInspector() {
   const Icon = getNodeIcon(data.bpmnType);
   const category = getNodeCategory(data.bpmnType);
   const isGateway = category === "gateways";
-  const canUseIntegration = EXECUTABLE_CATEGORIES.has(category);
+  const canUseIntegration = data.bpmnType === BpmnNodeType.ServiceTask;
 
-  const typeFilter = NODE_TYPE_FILTER[data.bpmnType];
-  const filteredIntegrations = typeFilter
-    ? integrations.filter((t) => t.type === typeFilter)
-    : integrations;
-
-  const selectedIntegration = data.integrationTemplateId
-    ? integrations.find((t) => t.id === data.integrationTemplateId)
+  const selectedIntegration = data.integrationId
+    ? integrations.find((t) => t.id === data.integrationId)
     : undefined;
 
   const integrationType = selectedIntegration?.type;
-
-  const operations: OperationDef[] = selectedIntegration
-    ? (JSON.parse(selectedIntegration.operations || "[]") as OperationDef[])
-    : [];
-
-  const selectedOperation = data.operationId
-    ? operations.find((o) => o.id === data.operationId)
-    : undefined;
+  const stepConfig = (data.stepConfig ?? {}) as Record<string, unknown>;
+  const integrationBaseConfig = selectedIntegration
+    ? (() => { try { return JSON.parse(selectedIntegration.baseConfig || "{}") as Record<string, unknown>; } catch { return {}; } })()
+    : {};
 
   const outgoingEdges = edges.filter((e) => e.source === node.id);
 
-  const expectedInputs = ((data.expectedInputs ?? []) as IoField[]);
-  const expectedOutputs = ((data.expectedOutputs ?? []) as IoField[]);
+  const isIntermediateNode =
+    data.bpmnType !== BpmnNodeType.StartEvent &&
+    data.bpmnType !== BpmnNodeType.EndEvent &&
+    data.bpmnType !== BpmnNodeType.WebhookTrigger;
 
   function update(patch: Partial<BpmnNodeData>) {
     if (selectedNodeId) updateNodeData(selectedNodeId, patch);
@@ -133,21 +109,51 @@ export function NodeInspector() {
     selectNode(null);
   }
 
-  function addIoField(direction: "expectedInputs" | "expectedOutputs") {
-    const current = (data[direction] ?? []) as IoField[];
-    update({ [direction]: [...current, { key: "", type: "string", description: "" }] });
-  }
-
-  function updateIoField(direction: "expectedInputs" | "expectedOutputs", idx: number, patch: Partial<IoField>) {
-    const current = [...(data[direction] ?? []) as IoField[]];
-    current[idx] = { ...current[idx], ...patch };
-    update({ [direction]: current });
-  }
-
-  function removeIoField(direction: "expectedInputs" | "expectedOutputs", idx: number) {
-    const current = [...(data[direction] ?? []) as IoField[]];
-    current.splice(idx, 1);
-    update({ [direction]: current });
+  async function sendIntegrationTestRequest() {
+    if (!selectedIntegration || selectedIntegration.type !== "http") return;
+    const base = JSON.parse(selectedIntegration.baseConfig || "{}") as Record<string, unknown>;
+    const baseUrl = (base.baseUrl as string)?.trim();
+    if (!baseUrl) {
+      setTestResult({ status: 0, statusText: "", body: "", error: "Integration has no Base URL." });
+      return;
+    }
+    const path = (stepConfig.path as string)?.trim() ?? (base.defaultPath as string)?.trim() ?? "";
+    const url = path ? `${baseUrl.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}` : baseUrl;
+    const method = ((stepConfig.method as string) ?? (base.defaultMethod as string) ?? "GET").toUpperCase();
+    setTestLoading(true);
+    setTestResult(null);
+    try {
+      const headers: Record<string, string> = {};
+      const defaultHeaders = base.defaultHeaders as Record<string, string> | undefined;
+      if (defaultHeaders && typeof defaultHeaders === "object") Object.assign(headers, defaultHeaders);
+      if ((base.authType as string) === "bearer" && testToken.trim()) {
+        headers["Authorization"] = `Bearer ${testToken.trim()}`;
+      }
+      let body: string | undefined;
+      const bodyTemplate = stepConfig.bodyTemplate ?? base.defaultRequestBody;
+      if (method !== "GET" && method !== "HEAD" && bodyTemplate !== undefined && bodyTemplate !== null) {
+        body = typeof bodyTemplate === "string" ? bodyTemplate : JSON.stringify(bodyTemplate);
+        if (!headers["Content-Type"]) headers["Content-Type"] = "application/json";
+      }
+      const res = await fetch(url, { method, headers, body });
+      const text = await res.text();
+      let parsed: string;
+      try {
+        parsed = JSON.stringify(JSON.parse(text), null, 2);
+      } catch {
+        parsed = text;
+      }
+      setTestResult({ status: res.status, statusText: res.statusText, body: parsed });
+    } catch (err) {
+      setTestResult({
+        status: 0,
+        statusText: "",
+        body: "",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setTestLoading(false);
+    }
   }
 
   return (
@@ -189,6 +195,20 @@ export function NodeInspector() {
         />
       </div>
 
+      {/* Step name — used for mapping UX; empty = use label */}
+      <div className="space-y-1.5">
+        <Label className="text-xs text-zinc-500">Step name</Label>
+        <Input
+          value={data.stepName ?? ""}
+          onChange={(e) => update({ stepName: e.target.value || undefined })}
+          placeholder={data.label || "Same as label"}
+          className="text-sm"
+        />
+        <p className="text-[10px] text-zinc-400">
+          Human-readable name for this step when mapping inputs from upstream. Leave empty to use the label.
+        </p>
+      </div>
+
       {/* Description */}
       <div className="space-y-1.5">
         <Label className="text-xs text-zinc-500">Description</Label>
@@ -200,6 +220,190 @@ export function NodeInspector() {
           className="resize-none text-sm"
         />
       </div>
+
+      <Separator />
+      {/* Output schema — fields this step produces for downstream mapping */}
+      <div className="space-y-2">
+        <Label className="text-xs font-semibold text-zinc-600">Output schema</Label>
+        <p className="text-[10px] text-zinc-400">
+          Declare the output fields this step produces so downstream nodes can map from them (e.g. {`{{${node.id}.fieldName}}`}).
+        </p>
+        {(data.outputSchema ?? []).map((field, idx) => (
+          <div key={idx} className="flex items-start gap-1.5">
+            <Input
+              value={field.key}
+              onChange={(e) => {
+                const current = [...(data.outputSchema ?? [])];
+                current[idx] = { ...current[idx], key: e.target.value };
+                update({ outputSchema: current });
+              }}
+              placeholder="field name"
+              className="h-7 flex-1 text-xs"
+            />
+            <Input
+              value={field.type ?? ""}
+              onChange={(e) => {
+                const current = [...(data.outputSchema ?? [])];
+                current[idx] = { ...current[idx], type: e.target.value || undefined };
+                update({ outputSchema: current });
+              }}
+              placeholder="type"
+              className="h-7 w-20 shrink-0 text-[10px]"
+            />
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => {
+                const current = [...(data.outputSchema ?? [])];
+                current.splice(idx, 1);
+                update({ outputSchema: current.length ? current : undefined });
+              }}
+              className="shrink-0 text-zinc-400 hover:text-red-500"
+            >
+              <X className="size-3" />
+            </Button>
+          </div>
+        ))}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            const current = data.outputSchema ?? [];
+            update({ outputSchema: [...current, { key: "" }] });
+          }}
+          className="gap-1 text-[10px]"
+        >
+          <Plus className="size-3" /> Add output field
+        </Button>
+      </div>
+
+      {/* Start Event — REST API request body schema */}
+      {data.bpmnType === BpmnNodeType.StartEvent && (
+        <>
+          <Separator />
+          <div className="space-y-3">
+            <Label className="text-xs font-semibold text-zinc-600">REST API Trigger</Label>
+            <p className="text-[10px] text-zinc-400">
+              Define the request body fields that the REST API expects when triggering this workflow.
+            </p>
+
+            <div className="space-y-2">
+              <Label className="text-xs text-zinc-500">Request Body Schema</Label>
+              {((data.requestBody ?? []) as { key: string; type: string; required?: boolean; description?: string }[]).map((field, idx) => (
+                <div key={idx} className="flex items-start gap-1.5">
+                  <Input
+                    value={field.key}
+                    onChange={(e) => {
+                      const current = [...(data.requestBody ?? [])];
+                      current[idx] = { ...current[idx], key: e.target.value };
+                      update({ requestBody: current });
+                    }}
+                    placeholder="field name"
+                    className="h-7 flex-1 text-xs"
+                  />
+                  <Select
+                    value={field.type}
+                    onValueChange={(v) => {
+                      const current = [...(data.requestBody ?? [])];
+                      current[idx] = { ...current[idx], type: v ?? "string" };
+                      update({ requestBody: current });
+                    }}
+                  >
+                    <SelectTrigger className="h-7 w-24 shrink-0 text-[10px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {IO_TYPES.map((t) => (
+                        <SelectItem key={t} value={t}>{t}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <label className="flex items-center gap-1 text-[10px] text-zinc-500">
+                    <input
+                      type="checkbox"
+                      checked={field.required ?? false}
+                      onChange={(e) => {
+                        const current = [...(data.requestBody ?? [])];
+                        current[idx] = { ...current[idx], required: e.target.checked };
+                        update({ requestBody: current });
+                      }}
+                      className="size-3"
+                    />
+                    Req
+                  </label>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => {
+                      const current = [...(data.requestBody ?? [])];
+                      current.splice(idx, 1);
+                      update({ requestBody: current });
+                    }}
+                    className="shrink-0 text-zinc-400 hover:text-red-500"
+                  >
+                    <X className="size-3" />
+                  </Button>
+                </div>
+              ))}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const current = (data.requestBody ?? []) as { key: string; type: string; required?: boolean; description?: string }[];
+                  update({ requestBody: [...current, { key: "", type: "string", required: false, description: "" }] });
+                }}
+                className="gap-1 text-[10px]"
+              >
+                <Plus className="size-3" /> Add Field
+              </Button>
+            </div>
+
+            {node.id && (
+              <div className="rounded-md border border-zinc-100 bg-zinc-50 p-2 text-[11px] text-zinc-500">
+                <p className="font-medium text-zinc-600">Trigger endpoint:</p>
+                <p className="mt-0.5 font-mono text-[10px]">POST /api/workflows/&#123;id&#125;/trigger</p>
+                <p className="mt-1 text-[10px] text-zinc-400">
+                  Publish the workflow and use the trigger endpoint to start it via REST API.
+                  Returns 200 immediately; results are delivered to the webhook URL configured on the End node.
+                </p>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* End Event — Webhook response URL */}
+      {data.bpmnType === BpmnNodeType.EndEvent && (
+        <>
+          <Separator />
+          <div className="space-y-3">
+            <Label className="text-xs font-semibold text-zinc-600">Webhook Response</Label>
+            <p className="text-[10px] text-zinc-400">
+              When the workflow completes, the result will be POSTed to this URL.
+            </p>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-zinc-500">Webhook URL</Label>
+              <Input
+                value={(data.webhookUrl as string) ?? ""}
+                onChange={(e) => update({ webhookUrl: e.target.value })}
+                placeholder="https://example.com/webhook/callback"
+                className="text-xs font-mono"
+              />
+            </div>
+            <div className="rounded-md border border-zinc-100 bg-zinc-50 p-2 text-[11px] text-zinc-500">
+              <p className="font-medium text-zinc-600">Response payload:</p>
+              <pre className="mt-1 whitespace-pre-wrap font-mono text-[10px] text-zinc-400">{`{
+  "runId": "...",
+  "workflowId": "...",
+  "status": "completed" | "failed",
+  "output": { ... },
+  "error": null | "...",
+  "completedAt": "..."
+}`}</pre>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Gateway conditions */}
       {isGateway && outgoingEdges.length > 0 && (
@@ -242,23 +446,21 @@ export function NodeInspector() {
         </>
       )}
 
-      {/* Integration config */}
+      {/* Integration config — Service Task only */}
       {canUseIntegration && (
         <>
           <Separator />
           <div className="space-y-3">
             <Label className="text-xs font-semibold text-zinc-600">Integration</Label>
 
-            {/* Integration selector */}
             <div className="space-y-1.5">
               <Label className="text-xs text-zinc-500">Integration</Label>
               <Select
-                value={data.integrationTemplateId ?? ""}
+                value={data.integrationId ?? ""}
                 onValueChange={(val) =>
                   update({
-                    integrationTemplateId: val ?? undefined,
-                    operationId: undefined,
-                    inputMapping: undefined,
+                    integrationId: val ?? undefined,
+                    stepConfig: val ? { ...stepConfig } : undefined,
                   })
                 }
               >
@@ -270,8 +472,8 @@ export function NodeInspector() {
                     <span className="text-zinc-400">None</span>
                   </SelectItem>
                   {(() => {
-                    const grouped = new Map<string, typeof filteredIntegrations>();
-                    for (const t of filteredIntegrations) {
+                    const grouped = new Map<string, typeof integrations>();
+                    for (const t of integrations) {
                       const cat = t.category || "custom";
                       if (!grouped.has(cat)) grouped.set(cat, []);
                       grouped.get(cat)!.push(t);
@@ -300,88 +502,182 @@ export function NodeInspector() {
 
             {selectedIntegration && (
               <>
-                {/* Operation selector */}
-                {operations.length > 1 && (
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-zinc-500">Operation</Label>
-                    <Select
-                      value={data.operationId ?? ""}
-                      onValueChange={(val) => update({ operationId: val ?? undefined })}
-                    >
-                      <SelectTrigger className="text-xs">
-                        <SelectValue placeholder="Select operation…" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {operations.map((op) => (
-                          <SelectItem key={op.id} value={op.id}>
-                            {op.name}
-                            {op.method && (
-                              <Badge variant="outline" className="ml-1.5 text-[9px] font-mono">{op.method}</Badge>
-                            )}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-
-                {/* Integration summary (read-only) */}
                 <div className="rounded-md border border-zinc-100 bg-zinc-50 p-2 text-[11px] text-zinc-500">
                   <span className="font-medium text-zinc-600">{selectedIntegration.name}</span>
                   <span className="mx-1">·</span>
                   <Badge variant="outline" className="text-[9px]">{selectedIntegration.type}</Badge>
-                  {integrationType === "http" && selectedOperation?.method && (
+                  {integrationType === "http" && (stepConfig.method || stepConfig.path) ? (
                     <>
                       <span className="mx-1">·</span>
-                      <span className="font-mono">{selectedOperation.method} {selectedOperation.path}</span>
+                      <span className="font-mono">{(stepConfig.method as string) ?? "GET"} {(stepConfig.path as string) ?? "/"}</span>
                     </>
-                  )}
+                  ) : null}
                   {integrationType === "code" && (
                     <>
                       <span className="mx-1">·</span>
-                      <span>{(() => { try { return JSON.parse(selectedIntegration.baseConfig)?.language ?? "javascript"; } catch { return "javascript"; } })()}</span>
+                      <span>{(stepConfig.language as string) ?? (() => { try { return (JSON.parse(selectedIntegration.baseConfig) as Record<string, unknown>)?.language ?? "javascript"; } catch { return "javascript"; } })() as string}</span>
                     </>
                   )}
                   <p className="mt-0.5 text-[10px] text-zinc-400">
-                    Edit integration properties via the Integrations button in the top bar.
+                    Edit integration via the Integrations button in the top bar. Step config below.
                   </p>
                 </div>
 
-                {/* Webhook properties */}
                 {integrationType === "webhook" && (
                   <WebhookProperties data={data} />
                 )}
 
-                {/* Input mapping from operation schema */}
-                {selectedOperation?.inputSchema && selectedOperation.inputSchema.length > 0 && (
+                {/* Step config: HTTP */}
+                {integrationType === "http" && (
                   <>
                     <Separator />
-                    <Label className="text-xs text-zinc-500">Input Mapping</Label>
-                    {selectedOperation.inputSchema.map((field) => (
-                      <div key={field.key} className="space-y-1">
-                        <Label className="text-[11px] text-zinc-400">
-                          {field.label}
-                          {field.required && <span className="ml-0.5 text-red-400">*</span>}
-                        </Label>
+                    <Label className="text-xs font-semibold text-zinc-600">Step config</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-[11px] text-zinc-500">Method</Label>
+                        <Select
+                          value={(stepConfig.method as string) ?? "GET"}
+                          onValueChange={(v) => update({ stepConfig: { ...stepConfig, method: v } })}
+                        >
+                          <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].map((m) => (
+                              <SelectItem key={m} value={m}>{m}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[11px] text-zinc-500">Path</Label>
                         <Input
-                          value={data.inputMapping?.[field.key] ?? ""}
-                          onChange={(e) => {
-                            update({
-                              inputMapping: {
-                                ...data.inputMapping,
-                                [field.key]: e.target.value,
-                              },
-                            });
-                          }}
-                          placeholder={`e.g. {{node-1.${field.key}}} or literal value`}
-                          className="text-xs"
+                          value={(stepConfig.path as string) ?? ""}
+                          onChange={(e) => update({ stepConfig: { ...stepConfig, path: e.target.value } })}
+                          placeholder="/resource/{{id}}"
+                          className="font-mono text-xs"
                         />
                       </div>
-                    ))}
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[11px] text-zinc-500">Body template (JSON)</Label>
+                      <Textarea
+                        value={typeof stepConfig.bodyTemplate === "string" ? stepConfig.bodyTemplate : (stepConfig.bodyTemplate ? JSON.stringify(stepConfig.bodyTemplate, null, 2) : "")}
+                        onChange={(e) => {
+                          const raw = e.target.value.trim();
+                          let bodyTemplate: unknown = undefined;
+                          if (raw) {
+                            try { bodyTemplate = JSON.parse(raw); } catch { bodyTemplate = raw; }
+                          }
+                          update({ stepConfig: { ...stepConfig, bodyTemplate } });
+                        }}
+                        placeholder='{"key": "{{value}}"}'
+                        rows={3}
+                        className="resize-none font-mono text-xs"
+                      />
+                    </div>
+                    <Separator />
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold text-zinc-600">Test integration</Label>
+                      {(integrationBaseConfig.authType as string) === "bearer" && (
+                        <div className="space-y-1">
+                          <Label className="text-[11px] text-zinc-500">Test token (optional, not saved)</Label>
+                          <Input
+                            type="password"
+                            value={testToken}
+                            onChange={(e) => setTestToken(e.target.value)}
+                            placeholder="Bearer token for test only"
+                            className="font-mono text-xs"
+                            autoComplete="off"
+                          />
+                        </div>
+                      )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={sendIntegrationTestRequest}
+                        disabled={testLoading}
+                        className="gap-1.5 text-xs"
+                      >
+                        {testLoading ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <Send className="size-3.5" />
+                        )}
+                        {testLoading ? "Sending…" : "Send test request"}
+                      </Button>
+                      {testResult && (
+                        <div className="rounded-md border border-zinc-200 bg-zinc-50 p-2 dark:border-zinc-700 dark:bg-zinc-900/50">
+                          <div className="mb-1 flex items-center gap-2">
+                            {testResult.error ? (
+                              <XCircle className="size-3.5 text-red-500" />
+                            ) : testResult.status >= 200 && testResult.status < 300 ? (
+                              <CheckCircle2 className="size-3.5 text-emerald-500" />
+                            ) : (
+                              <XCircle className="size-3.5 text-amber-500" />
+                            )}
+                            <span className="text-[11px] font-medium">
+                              {testResult.error ? "Error" : `${testResult.status} ${testResult.statusText}`}
+                            </span>
+                          </div>
+                          {(testResult.error ?? testResult.body) && (
+                            <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded bg-zinc-100 p-1.5 font-mono text-[10px] dark:bg-zinc-800">
+                              {(testResult.error ?? (testResult.body || "(empty body)"))}
+                            </pre>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </>
                 )}
 
-                {/* Credential picker */}
+                {/* Step config: MCP */}
+                {integrationType === "mcp_tool" && (
+                  <>
+                    <Separator />
+                    <Label className="text-xs font-semibold text-zinc-600">Step config</Label>
+                    <div className="space-y-1">
+                      <Label className="text-[11px] text-zinc-500">Tool name</Label>
+                      <Input
+                        value={(stepConfig.toolName as string) ?? ""}
+                        onChange={(e) => update({ stepConfig: { ...stepConfig, toolName: e.target.value } })}
+                        placeholder="e.g. search_web"
+                        className="font-mono text-xs"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Step config: Code */}
+                {integrationType === "code" && (
+                  <>
+                    <Separator />
+                    <Label className="text-xs font-semibold text-zinc-600">Step config</Label>
+                    <div className="space-y-1">
+                      <Label className="text-[11px] text-zinc-500">Language</Label>
+                      <Select
+                        value={(stepConfig.language as string) ?? "javascript"}
+                        onValueChange={(v) => update({ stepConfig: { ...stepConfig, language: v } })}
+                      >
+                        <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="javascript">JavaScript</SelectItem>
+                          <SelectItem value="python">Python</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[11px] text-zinc-500">Code</Label>
+                      <Textarea
+                        value={(stepConfig.code as string) ?? ""}
+                        onChange={(e) => update({ stepConfig: { ...stepConfig, code: e.target.value } })}
+                        placeholder="return { result: ctx['node-1'].value };"
+                        rows={8}
+                        className="resize-none font-mono text-xs"
+                      />
+                    </div>
+                  </>
+                )}
+
                 <div className="space-y-1.5">
                   <Label className="text-xs text-zinc-500">Credential</Label>
                   <Input
@@ -394,36 +690,96 @@ export function NodeInspector() {
               </>
             )}
           </div>
+        </>
+      )}
 
-          {/* Expected Inputs / Outputs */}
+      {/* Input Mapping — available for all intermediate nodes */}
+      {isIntermediateNode && (
+        <>
           <Separator />
           <div className="space-y-3">
-            <Label className="text-xs font-semibold text-zinc-600">Expected Inputs</Label>
-            {expectedInputs.map((field, idx) => (
-              <IoFieldRow
-                key={idx}
-                field={field}
-                onChange={(patch) => updateIoField("expectedInputs", idx, patch)}
-                onRemove={() => removeIoField("expectedInputs", idx)}
+            <Label className="text-xs font-semibold text-zinc-600">Input Mapping</Label>
+            <p className="text-[10px] text-zinc-400">
+              Map data from previous nodes into this node. Use expressions like{" "}
+              <code className="rounded bg-zinc-100 px-1 text-[9px]">{"{{node-1.fieldName}}"}</code>{" "}
+              to reference outputs from earlier nodes.
+            </p>
+            {(() => {
+              const incomingEdges = edges.filter((e) => e.target === node.id);
+              const upstreamNodes = incomingEdges
+                .map((e) => nodes.find((n) => n.id === e.source))
+                .filter(Boolean) as typeof nodes;
+              if (upstreamNodes.length === 0) return null;
+              return (
+                <div className="rounded-md border border-zinc-100 bg-zinc-50 p-2">
+                  <p className="text-[10px] font-medium text-zinc-600 mb-1.5">From upstream steps</p>
+                  <div className="flex flex-wrap gap-1">
+                    {upstreamNodes.map((up) => {
+                      const stepName = (up.data as BpmnNodeData).stepName || up.data.label || up.id;
+                      const schema = (up.data as BpmnNodeData).outputSchema ?? [];
+                      return (
+                        <div key={up.id} className="flex flex-wrap items-center gap-1">
+                          <span className="text-[10px] text-zinc-500">{stepName}</span>
+                          <span className="text-[9px] text-zinc-400 font-mono">({up.id})</span>
+                          {schema.length > 0 ? (
+                            schema.map((f) => (
+                              <Button
+                                key={f.key}
+                                variant="outline"
+                                size="sm"
+                                className="h-5 text-[9px] px-1.5 font-mono"
+                                onClick={() => {
+                                  const expr = `{{${up.id}.${f.key}}}`;
+                                  const current = { ...(data.inputMapping ?? {}), [`${f.key}_from_${up.id}`]: expr };
+                                  update({ inputMapping: current });
+                                }}
+                              >
+                                {f.key}
+                              </Button>
+                            ))
+                          ) : (
+                            <span className="text-[9px] text-zinc-400 italic">no output schema</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[9px] text-zinc-400 mt-1">Click a field to add a mapping from that upstream output.</p>
+                </div>
+              );
+            })()}
+            {Object.entries(data.inputMapping ?? {}).map(([key, value]) => (
+              <InputMappingRow
+                key={key}
+                fieldKey={key}
+                fieldValue={value}
+                onChange={(newKey, newValue) => {
+                  const current = { ...(data.inputMapping ?? {}) };
+                  if (newKey !== key) {
+                    delete current[key];
+                  }
+                  current[newKey] = newValue;
+                  update({ inputMapping: current });
+                }}
+                onRemove={() => {
+                  const current = { ...(data.inputMapping ?? {}) };
+                  delete current[key];
+                  update({ inputMapping: current });
+                }}
               />
             ))}
-            <Button variant="outline" size="sm" onClick={() => addIoField("expectedInputs")} className="gap-1 text-[10px]">
-              <Plus className="size-3" /> Add Input
-            </Button>
-          </div>
-
-          <div className="space-y-3">
-            <Label className="text-xs font-semibold text-zinc-600">Expected Outputs</Label>
-            {expectedOutputs.map((field, idx) => (
-              <IoFieldRow
-                key={idx}
-                field={field}
-                onChange={(patch) => updateIoField("expectedOutputs", idx, patch)}
-                onRemove={() => removeIoField("expectedOutputs", idx)}
-              />
-            ))}
-            <Button variant="outline" size="sm" onClick={() => addIoField("expectedOutputs")} className="gap-1 text-[10px]">
-              <Plus className="size-3" /> Add Output
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const current = { ...(data.inputMapping ?? {}) };
+                const newKey = `field_${Object.keys(current).length + 1}`;
+                current[newKey] = "";
+                update({ inputMapping: current });
+              }}
+              className="gap-1 text-[10px]"
+            >
+              <Plus className="size-3" /> Add Mapping
             </Button>
           </div>
         </>
@@ -534,38 +890,30 @@ export function NodeInspector() {
   );
 }
 
-function IoFieldRow({
-  field,
+function InputMappingRow({
+  fieldKey,
+  fieldValue,
   onChange,
   onRemove,
 }: {
-  field: IoField;
-  onChange: (patch: Partial<IoField>) => void;
+  fieldKey: string;
+  fieldValue: string;
+  onChange: (key: string, value: string) => void;
   onRemove: () => void;
 }) {
   return (
     <div className="flex items-start gap-1.5">
       <Input
-        value={field.key}
-        onChange={(e) => onChange({ key: e.target.value })}
-        placeholder="field name"
-        className="h-7 flex-1 text-xs"
+        value={fieldKey}
+        onChange={(e) => onChange(e.target.value, fieldValue)}
+        placeholder="key"
+        className="h-7 w-28 shrink-0 text-xs"
       />
-      <Select value={field.type} onValueChange={(v) => onChange({ type: v ?? "string" })}>
-        <SelectTrigger className="h-7 w-24 shrink-0 text-[10px]">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {IO_TYPES.map((t) => (
-            <SelectItem key={t} value={t}>{t}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
       <Input
-        value={field.description ?? ""}
-        onChange={(e) => onChange({ description: e.target.value })}
-        placeholder="description"
-        className="h-7 flex-1 text-xs"
+        value={fieldValue}
+        onChange={(e) => onChange(fieldKey, e.target.value)}
+        placeholder="{{node-1.field}} or literal"
+        className="h-7 flex-1 text-xs font-mono"
       />
       <Button variant="ghost" size="icon-sm" onClick={onRemove} className="shrink-0 text-zinc-400 hover:text-red-500">
         <X className="size-3" />
