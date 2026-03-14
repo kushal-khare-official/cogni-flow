@@ -4,7 +4,7 @@ import crypto from "crypto";
 
 interface NodeData {
   bpmnType?: string;
-  integrationTemplateId?: string;
+  integrationId?: string;
   webhookPath?: string;
   label?: string;
 }
@@ -49,23 +49,23 @@ export async function POST(
     const webhookNodes: WorkflowNode[] = [];
 
     for (const node of nodes) {
-      if (node.data.integrationTemplateId) {
-        webhookTemplateIds.add(node.data.integrationTemplateId);
+      if (node.data.integrationId) {
+        webhookTemplateIds.add(node.data.integrationId);
         webhookNodes.push(node);
       }
     }
 
     if (webhookTemplateIds.size > 0) {
-      const templates = await prisma.integrationTemplate.findMany({
+      const integrations = await prisma.integration.findMany({
         where: { id: { in: [...webhookTemplateIds] } },
       });
-      const webhookTplIds = new Set(
-        templates.filter((t) => t.type === "webhook").map((t) => t.id),
+      const webhookIntegrationIds = new Set(
+        integrations.filter((t) => t.type === "webhook").map((t) => t.id),
       );
 
       let nodesUpdated = false;
       for (const node of webhookNodes) {
-        if (!webhookTplIds.has(node.data.integrationTemplateId!)) continue;
+        if (!webhookIntegrationIds.has(node.data.integrationId!)) continue;
         if (node.data.webhookPath) continue;
 
         const path = `wh-${crypto.randomBytes(8).toString("hex")}`;

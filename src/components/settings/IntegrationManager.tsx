@@ -41,14 +41,12 @@ const CATEGORIES = [
   { value: "custom", label: "Custom" },
 ] as const;
 
-const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"] as const;
-
 const CODE_LANGUAGES = [
   { value: "javascript", label: "JavaScript" },
   { value: "python", label: "Python" },
 ] as const;
 
-interface Template {
+interface IntegrationRecord {
   id: string;
   name: string;
   icon: string;
@@ -56,13 +54,12 @@ interface Template {
   type: string;
   description: string;
   baseConfig: string;
-  operations: string;
   isBuiltIn: boolean;
 }
 
 export function IntegrationManager() {
   const [open, setOpen] = useState(false);
-  const [integrations, setIntegrations] = useState<Template[]>([]);
+  const [integrations, setIntegrations] = useState<IntegrationRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState<"list" | "form">("list");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -77,25 +74,17 @@ export function IntegrationManager() {
   const [formBaseUrl, setFormBaseUrl] = useState("");
   const [formAuthType, setFormAuthType] = useState("bearer");
   const [formDefaultHeaders, setFormDefaultHeaders] = useState("");
-  const [formMethod, setFormMethod] = useState("GET");
-  const [formPath, setFormPath] = useState("");
-  const [formBodyTemplate, setFormBodyTemplate] = useState("");
 
   // MCP fields
   const [formMcpCommand, setFormMcpCommand] = useState("");
 
   // Code fields
   const [formCodeLanguage, setFormCodeLanguage] = useState("javascript");
-  const [formCode, setFormCode] = useState("");
 
   // Kafka fields
   const [formKafkaBrokers, setFormKafkaBrokers] = useState("localhost:9092");
   const [formKafkaTopic, setFormKafkaTopic] = useState("");
   const [formKafkaGroupId, setFormKafkaGroupId] = useState("");
-
-  // Raw operations JSON (fallback for advanced users)
-  const [formOperationsJson, setFormOperationsJson] = useState("[]");
-  const [showRawOps, setShowRawOps] = useState(false);
 
   const invalidateAndRefetch = useIntegrationStore((s) => s.invalidateAndRefetch);
 
@@ -124,23 +113,16 @@ export function IntegrationManager() {
     setFormBaseUrl("");
     setFormAuthType("bearer");
     setFormDefaultHeaders("");
-    setFormMethod("GET");
-    setFormPath("");
-    setFormBodyTemplate("");
     setFormMcpCommand("");
     setFormCodeLanguage("javascript");
-    setFormCode("");
     setFormKafkaBrokers("localhost:9092");
     setFormKafkaTopic("");
     setFormKafkaGroupId("");
-    setFormOperationsJson("[]");
-    setShowRawOps(false);
     setEditingId(null);
   }
 
-  function startEdit(tpl: Template) {
+  function startEdit(tpl: IntegrationRecord) {
     const base = JSON.parse(tpl.baseConfig || "{}");
-    const ops = JSON.parse(tpl.operations || "[]") as Record<string, unknown>[];
 
     setFormName(tpl.name);
     setFormType(tpl.type);
@@ -153,12 +135,6 @@ export function IntegrationManager() {
       setFormDefaultHeaders(
         base.defaultHeaders ? JSON.stringify(base.defaultHeaders, null, 2) : "",
       );
-      const firstOp = ops[0] as Record<string, unknown> | undefined;
-      setFormMethod((firstOp?.method as string) ?? "GET");
-      setFormPath((firstOp?.path as string) ?? "");
-      setFormBodyTemplate(
-        firstOp?.bodyTemplate ? JSON.stringify(firstOp.bodyTemplate, null, 2) : "",
-      );
     } else if (tpl.type === "mcp_tool") {
       setFormMcpCommand(base.command ?? "");
     } else if (tpl.type === "kafka") {
@@ -167,11 +143,8 @@ export function IntegrationManager() {
       setFormKafkaGroupId(base.groupId ?? "");
     } else if (tpl.type === "code") {
       setFormCodeLanguage(base.language ?? "javascript");
-      const firstOp = ops[0] as Record<string, unknown> | undefined;
-      setFormCode((firstOp?.codeTemplate as string) ?? "");
     }
 
-    setFormOperationsJson(JSON.stringify(ops, null, 2));
     setEditingId(tpl.id);
     setView("form");
   }
@@ -185,7 +158,6 @@ export function IntegrationManager() {
     if (!formName.trim()) return;
 
     const baseConfig: Record<string, unknown> = {};
-    let operations: unknown[] = [];
 
     if (formType === "http") {
       baseConfig.baseUrl = formBaseUrl;
@@ -193,53 +165,14 @@ export function IntegrationManager() {
       if (formDefaultHeaders.trim()) {
         try { baseConfig.defaultHeaders = JSON.parse(formDefaultHeaders); } catch { /* ignore */ }
       }
-      if (showRawOps) {
-        try { operations = JSON.parse(formOperationsJson); } catch { /* keep empty */ }
-      } else {
-        let body: unknown = undefined;
-        if (formBodyTemplate.trim()) {
-          try { body = JSON.parse(formBodyTemplate); } catch { body = formBodyTemplate; }
-        }
-        operations = [{
-          id: "default",
-          name: formName,
-          method: formMethod,
-          path: formPath,
-          ...(body !== undefined ? { bodyTemplate: body } : {}),
-        }];
-      }
     } else if (formType === "mcp_tool") {
       baseConfig.command = formMcpCommand;
-      if (showRawOps) {
-        try { operations = JSON.parse(formOperationsJson); } catch { /* keep empty */ }
-      }
     } else if (formType === "kafka") {
       baseConfig.brokers = formKafkaBrokers;
       baseConfig.topic = formKafkaTopic;
       baseConfig.groupId = formKafkaGroupId;
-      operations = [{
-        id: "consume",
-        name: "Consume Messages",
-        inputSchema: [
-          { key: "topic", label: "Topic", type: "string", required: true },
-          { key: "groupId", label: "Consumer Group ID", type: "string", required: true },
-          { key: "brokers", label: "Brokers", type: "string", required: true },
-        ],
-      }];
     } else if (formType === "code") {
       baseConfig.language = formCodeLanguage;
-      operations = [{
-        id: "default",
-        name: formName,
-        codeTemplate: formCode,
-        language: formCodeLanguage,
-      }];
-    } else if (formType === "webhook") {
-      // no extra config needed
-    }
-
-    if (showRawOps && formType !== "http" && formType !== "code") {
-      try { operations = JSON.parse(formOperationsJson); } catch { /* keep empty */ }
     }
 
     const payload = {
@@ -248,7 +181,6 @@ export function IntegrationManager() {
       category: formCategory,
       description: formDescription,
       baseConfig,
-      operations,
     };
 
     if (editingId) {
@@ -272,7 +204,7 @@ export function IntegrationManager() {
   }
 
   async function handleDelete(id: string) {
-    await fetch(`/api/integration-templates/${id}`, { method: "DELETE" });
+    await fetch(`/api/integrations/${id}`, { method: "DELETE" });
     fetchIntegrations();
     invalidateAndRefetch();
   }
@@ -315,7 +247,7 @@ export function IntegrationManager() {
                   </p>
                 )}
                 {(() => {
-                  const grouped = new Map<string, Template[]>();
+                  const grouped = new Map<string, IntegrationRecord[]>();
                   for (const tpl of integrations) {
                     const cat = tpl.category || "custom";
                     if (!grouped.has(cat)) grouped.set(cat, []);
@@ -452,51 +384,9 @@ export function IntegrationManager() {
                     <Label className="text-xs">Default Headers <span className="font-normal text-zinc-400">(JSON)</span></Label>
                     <Textarea value={formDefaultHeaders} onChange={(e) => setFormDefaultHeaders(e.target.value)} placeholder='{"Content-Type": "application/json"}' rows={2} className="resize-none font-mono text-xs" />
                   </div>
-
-                  {!showRawOps && (
-                    <>
-                      <Separator className="my-1" />
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Default Endpoint</p>
-
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs">Method</Label>
-                          <Select value={formMethod} onValueChange={(v) => setFormMethod(v ?? "GET")}>
-                            <SelectTrigger className="text-xs font-mono"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              {HTTP_METHODS.map((m) => (
-                                <SelectItem key={m} value={m}>{m}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="col-span-2 space-y-1.5">
-                          <Label className="text-xs">Path <span className="font-normal text-zinc-400">(appended to base URL)</span></Label>
-                          <Input value={formPath} onChange={(e) => setFormPath(e.target.value)} placeholder="/resource/{{id}}" className="font-mono text-sm" />
-                        </div>
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">Request Body Template <span className="font-normal text-zinc-400">(JSON)</span></Label>
-                        <Textarea value={formBodyTemplate} onChange={(e) => setFormBodyTemplate(e.target.value)} placeholder='{"amount": "{{amount}}", "currency": "{{currency}}"}' rows={4} className="resize-none font-mono text-xs" />
-                      </div>
-                    </>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => setShowRawOps(!showRawOps)}
-                    className="text-[10px] text-blue-600 hover:underline"
-                  >
-                    {showRawOps ? "Use visual editor" : "Edit raw operations JSON"}
-                  </button>
-
-                  {showRawOps && (
-                    <div className="space-y-1.5">
-                      <Label className="text-xs">Operations <span className="font-normal text-zinc-400">(JSON array)</span></Label>
-                      <Textarea value={formOperationsJson} onChange={(e) => setFormOperationsJson(e.target.value)} rows={8} className="resize-none font-mono text-xs" placeholder='[{"id":"op1","name":"List items","method":"GET","path":"/items"}]' />
-                    </div>
-                  )}
+                  <p className="text-[10px] text-zinc-400">
+                    Method, path, and body are configured per workflow step in the Service Task node.
+                  </p>
                 </div>
               )}
 
@@ -518,10 +408,9 @@ export function IntegrationManager() {
                     <Label className="text-xs">Command</Label>
                     <Input value={formMcpCommand} onChange={(e) => setFormMcpCommand(e.target.value)} placeholder="npx -y @example/mcp-server" className="font-mono text-sm" />
                   </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Operations <span className="font-normal text-zinc-400">(JSON array)</span></Label>
-                    <Textarea value={formOperationsJson} onChange={(e) => setFormOperationsJson(e.target.value)} rows={5} className="resize-none font-mono text-xs" placeholder='[{"id":"tool1","name":"Search","toolName":"search_web"}]' />
-                  </div>
+                  <p className="text-[10px] text-zinc-400">
+                    Tool name is configured per workflow step in the Service Task node.
+                  </p>
                 </div>
               )}
 
@@ -551,7 +440,7 @@ export function IntegrationManager() {
                 <div className="space-y-3">
                   <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Custom Code</p>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Language</Label>
+                    <Label className="text-xs">Default Language</Label>
                     <Select value={formCodeLanguage} onValueChange={(v) => setFormCodeLanguage(v ?? "javascript")}>
                       <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
                       <SelectContent>
@@ -561,32 +450,9 @@ export function IntegrationManager() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">
-                      Code
-                      {formCodeLanguage === "javascript" && (
-                        <span className="ml-1 font-normal text-zinc-400">
-                          receives ctx object, return result
-                        </span>
-                      )}
-                      {formCodeLanguage === "python" && (
-                        <span className="ml-1 font-normal text-zinc-400">
-                          receives ctx dict via stdin JSON, print result JSON to stdout
-                        </span>
-                      )}
-                    </Label>
-                    <Textarea
-                      value={formCode}
-                      onChange={(e) => setFormCode(e.target.value)}
-                      rows={12}
-                      className="resize-none font-mono text-xs"
-                      placeholder={
-                        formCodeLanguage === "javascript"
-                          ? '// Access upstream outputs via ctx\nconst value = ctx["node-1"].amount;\nreturn { total: value * 1.1 };'
-                          : 'import json, sys\nctx = json.load(sys.stdin)\nresult = {"total": ctx["node-1"]["amount"] * 1.1}\nprint(json.dumps(result))'
-                      }
-                    />
-                  </div>
+                  <p className="text-[10px] text-zinc-400">
+                    Code is configured per workflow step in the Service Task node.
+                  </p>
                 </div>
               )}
 

@@ -12,6 +12,7 @@ import {
 import type { BpmnNode } from "@/lib/workflow/types";
 import { BpmnNodeType } from "@/lib/workflow/types";
 import { cn } from "@/lib/utils";
+import { useIntegrationStore } from "@/lib/store/integration-store";
 import { ExecutionStatusOverlay } from "./ExecutionStatusOverlay";
 
 const TASK_ICONS: Record<string, React.ElementType> = {
@@ -22,9 +23,26 @@ const TASK_ICONS: Record<string, React.ElementType> = {
   [BpmnNodeType.ReceiveTask]: Inbox,
 };
 
+function stepSummary(data: BpmnNode["data"]): string | null {
+  const stepConfig = (data.stepConfig ?? {}) as Record<string, unknown>;
+  if (data.integrationId && stepConfig) {
+    if (stepConfig.method || stepConfig.path) {
+      return `${(stepConfig.method as string) ?? "GET"} ${(stepConfig.path as string) ?? ""}`.trim();
+    }
+    if (stepConfig.toolName) return `tool: ${stepConfig.toolName as string}`;
+    if (stepConfig.code) return "Code";
+  }
+  return null;
+}
+
 function TaskNodeComponent({ data, selected }: NodeProps<BpmnNode>) {
   const Icon = TASK_ICONS[data.bpmnType] ?? Cog;
   const status = data.executionStatus;
+  const integrations = useIntegrationStore((s) => s.integrations);
+  const integration = data.integrationId
+    ? integrations.find((t) => t.id === data.integrationId)
+    : undefined;
+  const summary = stepSummary(data);
 
   return (
     <div
@@ -48,7 +66,18 @@ function TaskNodeComponent({ data, selected }: NodeProps<BpmnNode>) {
           <p className="truncate text-xs font-semibold text-slate-800">
             {data.label}
           </p>
-          {data.description && (
+          {integration && (
+            <p className="mt-0.5 truncate text-[10px] text-blue-600 font-medium">
+              {integration.name}
+              {summary && ` · ${summary}`}
+            </p>
+          )}
+          {data.description && !integration && (
+            <p className="mt-0.5 line-clamp-2 text-[10px] leading-tight text-slate-500">
+              {data.description}
+            </p>
+          )}
+          {data.description && integration && (
             <p className="mt-0.5 line-clamp-2 text-[10px] leading-tight text-slate-500">
               {data.description}
             </p>

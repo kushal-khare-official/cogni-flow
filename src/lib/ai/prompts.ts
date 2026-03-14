@@ -12,7 +12,7 @@ Each node has a \`bpmnType\` (the BPMN semantic type) and a \`type\` (the React 
 - errorEvent -> eventNode (error boundary)
 
 ### Tasks
-- serviceTask -> taskNode (automated service call)
+- serviceTask -> taskNode (automated service call; can be wired to an Integration with a per-step config)
 - userTask -> taskNode (requires human input)
 - scriptTask -> taskNode (runs a script)
 - sendTask -> taskNode (sends a message)
@@ -23,8 +23,7 @@ Each node has a \`bpmnType\` (the BPMN semantic type) and a \`type\` (the React 
 - parallelGateway -> gatewayNode (AND: all paths taken concurrently)
 - inclusiveGateway -> gatewayNode (OR: one or more paths taken)
 
-### Integrations
-- integration -> integrationNode (external service integration using a template)
+### Triggers
 - webhookTrigger -> webhookTriggerNode (webhook-based workflow start)
 
 ### Logic
@@ -54,8 +53,8 @@ Each node has a \`bpmnType\` (the BPMN semantic type) and a \`type\` (the React 
 - All edges must use type "conditional".
 - Gateway nodes MUST have multiple outgoing edges. Each outgoing edge should have a descriptive label in data.label and an expression in data.condition.
 - Gateway nodes should include a \`conditions\` array in their data mapping each outgoing edgeId to its expression.
-- For integration nodes: if an existing integration fits, set data.integrationTemplateId to its ID and data.operationId to the operation. If no existing integration fits, populate the newIntegration field to create one on the fly.
-- The newIntegration field should specify: name, type (one of "http", "webhook", "mcp_tool", "code", "kafka"), category, description, and baseConfig as key-value pairs. The system will auto-create the integration and link it.
+- There is no separate integration node. To call an external service, use a **serviceTask** and attach an Integration. For a serviceTask that calls an integration: set data.integrationId to an existing Integration ID, and set data.stepConfig to the step-specific config (e.g. for HTTP: method, path, bodyTemplate; for MCP: toolName; for code: code, language). If no existing integration fits, set data.newIntegration (name, type, category, description, baseConfig); the system will create the Integration and set integrationId; the node must still include stepConfig for this step. Do not use integrationTemplateId or operationId; use integrationId and stepConfig only.
+- The newIntegration field should specify: name, type (one of "http", "webhook", "mcp_tool", "code", "kafka"), category, description, and baseConfig as key-value pairs. The system will auto-create the Integration (no operations) and link it; the node must still provide stepConfig.
 
 ## REST API Trigger & Request Body Schema
 
@@ -71,6 +70,14 @@ Workflows can be exposed as REST APIs. The **startEvent** node defines the API c
 - When the user asks for an API-triggered workflow, always set the \`requestBody\` on the startEvent with appropriate fields, and set \`webhookUrl\` on the endEvent if the user provides a callback URL.
 - The REST API endpoint is: \`POST /api/workflows/{id}/trigger\` — it accepts the request body matching the start node's schema, returns HTTP 200 immediately, and delivers results asynchronously via the webhook URL.
 
+## Step Name and Output Schema
+
+Each node should define:
+- \`stepName\` (string): Human-readable name for the step (e.g. "Fetch Order", "Validate Payment"). Use empty string to fall back to the node label. Downstream mapping UX uses this to identify steps.
+- \`outputSchema\` (array): The output fields this step produces so downstream nodes can map inputs. Each entry has \`key\` (required), and optionally \`type\` (e.g. "string", "number", "object") and \`description\`.
+- Set \`outputSchema\` on every step that produces data for later steps. Use an empty array for steps that do not expose outputs (e.g. endEvent).
+- Example: a step that returns order data should have \`"outputSchema": [{ "key": "orderId", "type": "string" }, { "key": "amount", "type": "number" }]\`. The next step's inputMapping would reference \`{{node-1.orderId}}\` or \`{{node-1.amount}}\`.
+
 ## Input Mapping for Intermediate Nodes
 
 Every node (except startEvent, endEvent, and webhookTrigger) can have an \`inputMapping\` array that maps data from previous node outputs into the current node's input. This is how data flows between nodes.
@@ -78,11 +85,11 @@ Every node (except startEvent, endEvent, and webhookTrigger) can have an \`input
 - Each entry in the \`inputMapping\` array has:
   - \`key\` (string): the target field name for this node
   - \`value\` (string): an expression referencing a previous node's output (e.g. \`{{node-1.orderId}}\`) or a literal value
-- Expression syntax: \`{{nodeId.fieldName}}\` references the output field \`fieldName\` from the node with id \`nodeId\`.
+- Expression syntax: \`{{nodeId.fieldName}}\` references the output field \`fieldName\` from the node with id \`nodeId\`. Use the \`outputSchema\` of upstream nodes to know which fieldNames are available.
 - You SHOULD set \`inputMapping\` on intermediate nodes to explicitly wire data from previous steps, especially when the node needs specific fields from upstream.
 - Example: a serviceTask that needs an orderId from the start node would have:
   \`"inputMapping": [{ "key": "orderId", "value": "{{node-1.orderId}}" }]\`
-- For integration nodes, the inputMapping feeds into the integration executor's resolved inputs.
+- For service tasks with an integration, the inputMapping feeds into the executor's resolved inputs.
 
 ## Loop Node — How It Works
 
@@ -122,18 +129,20 @@ In terms of edges:
 3. Keep the loop body as a simple linear chain for best results. Avoid putting gateways inside loops.
 4. Place the body entry edge BEFORE the exit edge in the edges array to ensure correct detection.
 
-## Integration Types
+## Integration Types (for serviceTask + integrationId + stepConfig)
 
-- **http** — REST API: call any HTTP/REST endpoint (GET, POST, PUT, PATCH, DELETE)
+Each step that calls an external service is one serviceTask with one Integration and one stepConfig. Integration types:
+
+- **http** — REST API: stepConfig uses method, path, bodyTemplate
 - **webhook** — REST API + Webhook Callback: call an API that sends results back via webhook
-- **mcp_tool** — MCP Tool Call: invoke tools from a Model Context Protocol server
-- **code** — Custom Code Script: execute JavaScript or Python code inline
-- **kafka** — Kafka Topic Consumer: consume messages from a Kafka topic
+- **mcp_tool** — MCP Tool Call: stepConfig uses toolName
+- **code** — Custom Code Script: stepConfig uses code, language
+- **kafka** — Kafka Topic Consumer: stepConfig or inputMapping for topic, groupId, brokers
 
 - Provide a clear, concise label for every node.
 - Include a brief description for non-trivial nodes.`;
 
-export const CHAT_SYSTEM_PROMPT = `You are a BPMN workflow assistant helping users refine their workflows through conversation. The current workflow JSON is provided as context below.
+export const CHAT_SYSTEM_PROMPT = `You are a BPMN workflow assistant helping users refine their workflows through conversation. The current workflow JSON is provided as context below. External calls use serviceTask nodes with integrationId and stepConfig; there is no separate integration node type.
 
 ## Your Responsibilities
 

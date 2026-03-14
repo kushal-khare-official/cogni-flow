@@ -8,16 +8,7 @@ function createClient() {
   return new PrismaClient({ adapter } as never);
 }
 
-const REMOVED_TEMPLATE_IDS = [
-  "tpl-stripe",
-  "tpl-keycloak",
-  "tpl-salesforce",
-  "tpl-sap",
-  "tpl-prometheus",
-  "tpl-rpa",
-];
-
-const BUILT_IN_TEMPLATES = [
+const BUILT_IN_INTEGRATIONS = [
   {
     id: "tpl-rest-api",
     name: "REST API",
@@ -30,19 +21,6 @@ const BUILT_IN_TEMPLATES = [
       authType: "none",
       defaultHeaders: { "Content-Type": "application/json" },
     }),
-    operations: JSON.stringify([
-      {
-        id: "request",
-        name: "HTTP Request",
-        method: "GET",
-        path: "/",
-        inputSchema: [
-          { key: "url", label: "URL (overrides base)", type: "string", required: false },
-          { key: "method", label: "Method", type: "string", required: false, default: "GET" },
-          { key: "body", label: "Request Body (JSON)", type: "string", required: false },
-        ],
-      },
-    ]),
     credentialSchema: JSON.stringify([
       { key: "apiKey", label: "API Key / Bearer Token", type: "string", required: false, sensitive: true },
     ]),
@@ -64,20 +42,6 @@ const BUILT_IN_TEMPLATES = [
       authType: "none",
       defaultHeaders: { "Content-Type": "application/json" },
     }),
-    operations: JSON.stringify([
-      {
-        id: "callWithCallback",
-        name: "Call with Webhook Callback",
-        method: "POST",
-        path: "/",
-        bodyTemplate: { callbackUrl: "{{callbackUrl}}" },
-        inputSchema: [
-          { key: "url", label: "Target URL", type: "string", required: true },
-          { key: "body", label: "Request Body (JSON)", type: "string", required: false },
-          { key: "callbackUrl", label: "Callback URL (auto-generated)", type: "string", required: false },
-        ],
-      },
-    ]),
     credentialSchema: JSON.stringify([
       { key: "apiKey", label: "API Key / Bearer Token", type: "string", required: false, sensitive: true },
       { key: "webhookSecret", label: "Webhook Secret", type: "string", required: false, sensitive: true },
@@ -96,7 +60,6 @@ const BUILT_IN_TEMPLATES = [
     type: "mcp_tool",
     description: "Invoke any tool from a configured MCP (Model Context Protocol) server.",
     baseConfig: JSON.stringify({}),
-    operations: JSON.stringify([]),
     credentialSchema: JSON.stringify([]),
     mockConfig: JSON.stringify({
       latencyMs: 100,
@@ -112,14 +75,6 @@ const BUILT_IN_TEMPLATES = [
     type: "code",
     description: "Execute custom JavaScript or Python code as a workflow step.",
     baseConfig: JSON.stringify({ language: "javascript" }),
-    operations: JSON.stringify([
-      {
-        id: "execute",
-        name: "Execute Code",
-        codeTemplate: "// Access upstream node outputs via ctx\n// Return a value to pass downstream\nreturn { result: 'hello' };",
-        inputSchema: [],
-      },
-    ]),
     credentialSchema: JSON.stringify([]),
     mockConfig: JSON.stringify({
       latencyMs: 50,
@@ -140,18 +95,6 @@ const BUILT_IN_TEMPLATES = [
       topic: "",
       fromBeginning: false,
     }),
-    operations: JSON.stringify([
-      {
-        id: "consume",
-        name: "Consume Messages",
-        inputSchema: [
-          { key: "topic", label: "Topic", type: "string", required: true },
-          { key: "groupId", label: "Consumer Group ID", type: "string", required: true },
-          { key: "brokers", label: "Brokers (comma-separated)", type: "string", required: true, default: "localhost:9092" },
-          { key: "fromBeginning", label: "From Beginning", type: "boolean", required: false, default: false },
-        ],
-      },
-    ]),
     credentialSchema: JSON.stringify([
       { key: "saslUsername", label: "SASL Username", type: "string", required: false, sensitive: false },
       { key: "saslPassword", label: "SASL Password", type: "string", required: false, sensitive: true },
@@ -167,22 +110,14 @@ const BUILT_IN_TEMPLATES = [
 const prisma = createClient();
 
 async function main() {
-  await prisma.integrationTemplate.deleteMany({
-    where: { id: { in: REMOVED_TEMPLATE_IDS } },
-  });
-  // Also remove the old IDs that were renamed
-  await prisma.integrationTemplate.deleteMany({
-    where: { id: { in: ["tpl-mcp", "tpl-custom-http"] } },
-  });
-
-  for (const tpl of BUILT_IN_TEMPLATES) {
-    await prisma.integrationTemplate.upsert({
-      where: { id: tpl.id },
-      update: { ...tpl },
-      create: { ...tpl },
+  for (const integration of BUILT_IN_INTEGRATIONS) {
+    await prisma.integration.upsert({
+      where: { id: integration.id },
+      update: { ...integration },
+      create: { ...integration },
     });
   }
-  console.log(`Seeded ${BUILT_IN_TEMPLATES.length} integrations (removed ${REMOVED_TEMPLATE_IDS.length} legacy ones).`);
+  console.log(`Seeded ${BUILT_IN_INTEGRATIONS.length} integrations.`);
 }
 
 main()

@@ -10,6 +10,40 @@ import {
 } from "@xyflow/react";
 import { v4 as uuidv4 } from "uuid";
 
+/** Migrate legacy integration nodes to serviceTask with integrationId/stepConfig; drop integrationTemplateId/operationId */
+function normalizeNodes(nodes: BpmnNode[]): BpmnNode[] {
+  return nodes.map((n) => {
+    const d = n.data as Record<string, unknown>;
+    const isLegacyIntegration = d.bpmnType === "integration";
+    const hasLegacyIds = d.integrationTemplateId != null || d.operationId != null;
+    if (isLegacyIntegration) {
+      const { integrationTemplateId, operationId, ...rest } = d;
+      return {
+        ...n,
+        type: "taskNode",
+        data: {
+          ...rest,
+          bpmnType: BpmnNodeType.ServiceTask,
+          integrationId: undefined,
+          stepConfig: d.stepConfig ?? {},
+        },
+      } as BpmnNode;
+    }
+    if (hasLegacyIds) {
+      const { integrationTemplateId, operationId, ...rest } = d;
+      return {
+        ...n,
+        data: {
+          ...rest,
+          integrationId: undefined,
+          stepConfig: d.stepConfig ?? {},
+        },
+      } as BpmnNode;
+    }
+    return n;
+  });
+}
+
 interface HistoryEntry {
   nodes: BpmnNode[];
   edges: BpmnEdge[];
@@ -67,6 +101,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
     set((state) => ({
       ...state,
       ...data,
+      nodes: data.nodes ? normalizeNodes(data.nodes) : state.nodes,
     })),
 
   setName: (name) => set({ name }),
@@ -74,7 +109,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
 
   setNodes: (nodes) => {
     get().pushHistory();
-    set({ nodes });
+    set({ nodes: normalizeNodes(nodes) });
   },
 
   setEdges: (edges) => {
