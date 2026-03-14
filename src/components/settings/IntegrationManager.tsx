@@ -75,17 +75,31 @@ export function IntegrationManager() {
   const [formDefaultPath, setFormDefaultPath] = useState("");
   const [formAuthType, setFormAuthType] = useState("bearer");
   const [formDefaultHeaders, setFormDefaultHeaders] = useState("");
+  const [formMethod, setFormMethod] = useState("GET");
+  const [formRequestBody, setFormRequestBody] = useState("");
 
   // MCP fields
   const [formMcpCommand, setFormMcpCommand] = useState("");
 
   // Code fields
   const [formCodeLanguage, setFormCodeLanguage] = useState("javascript");
+  const [formExpectedInputs, setFormExpectedInputs] = useState("");
+  const [formDefaultCode, setFormDefaultCode] = useState("");
 
   // Kafka fields
   const [formKafkaBrokers, setFormKafkaBrokers] = useState("localhost:9092");
   const [formKafkaTopic, setFormKafkaTopic] = useState("");
   const [formKafkaGroupId, setFormKafkaGroupId] = useState("");
+
+  // Test request (HTTP only)
+  const [testLoading, setTestLoading] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    status: number;
+    statusText: string;
+    body: string;
+    error?: string;
+  } | null>(null);
+  const [testToken, setTestToken] = useState("");
 
   const invalidateAndRefetch = useIntegrationStore((s) => s.invalidateAndRefetch);
 
@@ -115,12 +129,77 @@ export function IntegrationManager() {
     setFormDefaultPath("");
     setFormAuthType("bearer");
     setFormDefaultHeaders("");
+    setFormMethod("GET");
+    setFormRequestBody("");
     setFormMcpCommand("");
     setFormCodeLanguage("javascript");
+    setFormExpectedInputs("");
+    setFormDefaultCode("");
     setFormKafkaBrokers("localhost:9092");
     setFormKafkaTopic("");
     setFormKafkaGroupId("");
     setEditingId(null);
+    setTestResult(null);
+    setTestToken("");
+  }
+
+  async function sendTestRequest() {
+    const base = formBaseUrl.trim();
+    const path = formDefaultPath.trim();
+    const url = path ? `${base.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}` : base;
+    if (!base) {
+      setTestResult({ status: 0, statusText: "", body: "", error: "Enter a Base URL first." });
+      return;
+    }
+    setTestLoading(true);
+    setTestResult(null);
+    try {
+      const method = (formMethod || "GET").toUpperCase();
+      const headers: Record<string, string> = {};
+      try {
+        if (formDefaultHeaders.trim()) {
+          Object.assign(headers, JSON.parse(formDefaultHeaders) as Record<string, string>);
+        }
+      } catch {
+        /* ignore invalid JSON */
+      }
+      if (formAuthType === "bearer" && testToken.trim()) {
+        headers["Authorization"] = `Bearer ${testToken.trim()}`;
+      }
+      const sendsBody = method !== "GET" && method !== "HEAD";
+      let body: string | undefined;
+      if (sendsBody && formRequestBody.trim()) {
+        try {
+          body = JSON.stringify(JSON.parse(formRequestBody));
+        } catch {
+          body = formRequestBody;
+        }
+        if (!headers["Content-Type"]) headers["Content-Type"] = "application/json";
+      }
+      const res = await fetch(url, { method, headers, body });
+      const text = await res.text();
+      let parsed: string;
+      try {
+        const j = JSON.parse(text);
+        parsed = JSON.stringify(j, null, 2);
+      } catch {
+        parsed = text;
+      }
+      setTestResult({
+        status: res.status,
+        statusText: res.statusText,
+        body: parsed,
+      });
+    } catch (err) {
+      setTestResult({
+        status: 0,
+        statusText: "",
+        body: "",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setTestLoading(false);
+    }
   }
 
   function startEdit(tpl: IntegrationRecord) {
@@ -138,6 +217,23 @@ export function IntegrationManager() {
       setFormDefaultHeaders(
         base.defaultHeaders ? JSON.stringify(base.defaultHeaders, null, 2) : "",
       );
+      setFormMethod(base.defaultMethod ?? "GET");
+      setFormRequestBody(
+        typeof base.defaultRequestBody === "string"
+          ? base.defaultRequestBody
+          : base.defaultRequestBody != null
+            ? JSON.stringify(base.defaultRequestBody, null, 2)
+            : "",
+      );
+    } else if (tpl.type === "webhook") {
+      setFormMethod(base.defaultMethod ?? "POST");
+      setFormRequestBody(
+        typeof base.defaultRequestBody === "string"
+          ? base.defaultRequestBody
+          : base.defaultRequestBody != null
+            ? JSON.stringify(base.defaultRequestBody, null, 2)
+            : "",
+      );
     } else if (tpl.type === "mcp_tool") {
       setFormMcpCommand(base.command ?? "");
     } else if (tpl.type === "kafka") {
@@ -146,6 +242,15 @@ export function IntegrationManager() {
       setFormKafkaGroupId(base.groupId ?? "");
     } else if (tpl.type === "code") {
       setFormCodeLanguage(base.language ?? "javascript");
+      const inputs = base.expectedInputs;
+      setFormExpectedInputs(
+        Array.isArray(inputs)
+          ? inputs.join("\n")
+          : typeof inputs === "string"
+            ? inputs
+            : "",
+      );
+      setFormDefaultCode(base.defaultCode ?? "");
     }
 
     setEditingId(tpl.id);
@@ -166,8 +271,25 @@ export function IntegrationManager() {
       baseConfig.baseUrl = formBaseUrl.trim();
       if (formDefaultPath.trim()) baseConfig.defaultPath = formDefaultPath.trim();
       baseConfig.authType = formAuthType;
+      baseConfig.defaultMethod = formMethod;
+      if (formRequestBody.trim()) {
+        try {
+          baseConfig.defaultRequestBody = JSON.parse(formRequestBody);
+        } catch {
+          baseConfig.defaultRequestBody = formRequestBody;
+        }
+      }
       if (formDefaultHeaders.trim()) {
         try { baseConfig.defaultHeaders = JSON.parse(formDefaultHeaders); } catch { /* ignore */ }
+      }
+    } else if (formType === "webhook") {
+      baseConfig.defaultMethod = formMethod;
+      if (formRequestBody.trim()) {
+        try {
+          baseConfig.defaultRequestBody = JSON.parse(formRequestBody);
+        } catch {
+          baseConfig.defaultRequestBody = formRequestBody;
+        }
       }
     } else if (formType === "mcp_tool") {
       baseConfig.command = formMcpCommand;
@@ -177,6 +299,12 @@ export function IntegrationManager() {
       baseConfig.groupId = formKafkaGroupId;
     } else if (formType === "code") {
       baseConfig.language = formCodeLanguage;
+      const inputLines = formExpectedInputs
+        .split(/[\n,]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (inputLines.length) baseConfig.expectedInputs = inputLines;
+      if (formDefaultCode.trim()) baseConfig.defaultCode = formDefaultCode;
     }
 
     const payload = {
@@ -434,8 +562,64 @@ export function IntegrationManager() {
                     <Textarea value={formDefaultHeaders} onChange={(e) => setFormDefaultHeaders(e.target.value)} placeholder='{"Content-Type": "application/json"}' rows={2} className="resize-none font-mono text-xs" />
                   </div>
                   <p className="text-[10px] text-zinc-400">
-                    Method, path, and body are configured per workflow step in the Service Task node.
+                    Path can be overridden per workflow step in the Service Task node.
                   </p>
+
+                  <Separator />
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Test request</p>
+                    {formAuthType === "bearer" && (
+                      <div className="space-y-1">
+                        <Label className="text-xs">Test token <span className="font-normal text-zinc-400">(optional, not saved)</span></Label>
+                        <Input
+                          type="password"
+                          value={testToken}
+                          onChange={(e) => setTestToken(e.target.value)}
+                          placeholder="Bearer token for test only"
+                          className="font-mono text-xs"
+                          autoComplete="off"
+                        />
+                      </div>
+                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={sendTestRequest}
+                      disabled={testLoading || !formBaseUrl.trim()}
+                      className="gap-1.5 text-xs"
+                    >
+                      {testLoading ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Send className="size-3.5" />
+                      )}
+                      {testLoading ? "Sending…" : "Send test request"}
+                    </Button>
+                    {testResult && (
+                      <div className="rounded-md border border-zinc-200 bg-zinc-50 p-2.5 dark:border-zinc-700 dark:bg-zinc-900/50">
+                        <div className="mb-1.5 flex items-center gap-2">
+                          {testResult.error ? (
+                            <XCircle className="size-4 text-red-500" />
+                          ) : testResult.status >= 200 && testResult.status < 300 ? (
+                            <CheckCircle2 className="size-4 text-emerald-500" />
+                          ) : (
+                            <XCircle className="size-4 text-amber-500" />
+                          )}
+                          <span className="text-xs font-medium">
+                            {testResult.error
+                              ? "Error"
+                              : `${testResult.status} ${testResult.statusText}`}
+                          </span>
+                        </div>
+                        {(testResult.error || testResult.body) && (
+                          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-zinc-100 p-2 font-mono text-[10px] dark:bg-zinc-800">
+                            {testResult.error ?? (testResult.body || "(empty body)")}
+                          </pre>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -502,9 +686,32 @@ export function IntegrationManager() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <p className="text-[10px] text-zinc-400">
-                    Code is configured per workflow step in the Service Task node.
-                  </p>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Expected inputs</Label>
+                    <Textarea
+                      value={formExpectedInputs}
+                      onChange={(e) => setFormExpectedInputs(e.target.value)}
+                      placeholder="One input per line or comma-separated, e.g.:&#10;payload&#10;userId&#10;options"
+                      rows={3}
+                      className="resize-none font-mono text-xs"
+                    />
+                    <p className="text-[10px] text-zinc-400">
+                      List of input keys this integration expects (used when wiring steps).
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Default code block</Label>
+                    <Textarea
+                      value={formDefaultCode}
+                      onChange={(e) => setFormDefaultCode(e.target.value)}
+                      placeholder="return { result: ctx['node-1']?.value };"
+                      rows={8}
+                      className="resize-none font-mono text-xs"
+                    />
+                    <p className="text-[10px] text-zinc-400">
+                      Optional default code template; can be overridden per step in the Service Task node.
+                    </p>
+                  </div>
                 </div>
               )}
 
