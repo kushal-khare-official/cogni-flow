@@ -869,6 +869,49 @@ export function NodeInspector() {
         </>
       )}
 
+      {/* Output Mapping — integration response → step output (integration nodes only) */}
+      {(data.integrationId ?? data.integrationTemplateId) && (
+        <>
+          <Separator />
+          <div className="space-y-3">
+            <Label className="text-xs font-semibold text-zinc-600">Output Mapping</Label>
+            <p className="text-[10px] text-zinc-400">
+              Map integration response to step output. Key = step output field (e.g. <code className="rounded bg-zinc-100 px-1 text-[9px]">id</code>). Value = dot path into response (e.g. <code className="rounded bg-zinc-100 px-1 text-[9px]">body.id</code>, <code className="rounded bg-zinc-100 px-1 text-[9px]">body</code> for HTTP).
+            </p>
+            {Object.entries(data.outputMapping ?? {}).map(([key, value]) => (
+              <InputMappingRow
+                key={key}
+                fieldKey={key}
+                fieldValue={value}
+                onChange={(newKey, newValue) => {
+                  const current = { ...(data.outputMapping ?? {}) };
+                  if (newKey !== key) delete current[key];
+                  current[newKey] = newValue;
+                  update({ outputMapping: current });
+                }}
+                onRemove={() => {
+                  const current = { ...(data.outputMapping ?? {}) };
+                  delete current[key];
+                  update({ outputMapping: Object.keys(current).length ? current : undefined });
+                }}
+              />
+            ))}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const current = { ...(data.outputMapping ?? {}) };
+                current[`out_${Object.keys(current).length + 1}`] = "";
+                update({ outputMapping: current });
+              }}
+              className="gap-1 text-[10px]"
+            >
+              <Plus className="size-3" /> Add Output Mapping
+            </Button>
+          </div>
+        </>
+      )}
+
       {/* Loop configuration */}
       {data.bpmnType === BpmnNodeType.Loop && (
         <>
