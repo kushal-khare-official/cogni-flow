@@ -85,8 +85,8 @@ const bpmnNodeSchema = z.object({
       type: z.enum(["string", "number", "boolean", "object", "array"]).describe("Field type"),
       required: z.boolean().describe("Whether the field is required"),
       description: z.string().describe("Brief description of the field"),
-    })).nullable().describe("REST API request body schema (startEvent only)"),
-    webhookUrl: z.string().nullable().describe("URL to POST workflow results to when complete (endEvent only)"),
+    })).describe("REST API request body schema (startEvent only); use empty array if not startEvent"),
+    webhookUrl: z.string().describe("URL to POST workflow results (endEvent only); use empty string if not endEvent"),
   }),
 });
 
