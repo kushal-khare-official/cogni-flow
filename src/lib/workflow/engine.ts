@@ -103,38 +103,6 @@ export async function simulateWorkflow(
       const out = outgoingEdges(currentNodeId, edges);
       decision = `Split into ${out.length} paths (traversing first)`;
       output = { ...currentInput };
-    } else if (bpmnType === BpmnNodeType.AgentGate) {
-      const agentId = (node.data.config?.agentId as string) || (currentInput.agentId as string);
-      if (!agentId) {
-        output = { verified: false, error: "No agent ID provided" };
-        decision = "agent_rejected";
-      } else if (currentInput.agentStatus === "active") {
-        output = { verified: true, agentId, fingerprint: `fp_${agentId}_${Date.now()}` };
-        decision = "agent_verified";
-      } else {
-        output = { verified: false, error: `Agent not active: ${currentInput.agentStatus || "unknown"}` };
-        decision = "agent_rejected";
-      }
-    } else if (bpmnType === BpmnNodeType.MandateCheck) {
-      const amount = (currentInput.amount as number) || 0;
-      const maxAmount = (node.data.config?.maxAmount as number) || 10000;
-      if (currentInput.mandateApproved || amount < maxAmount) {
-        output = { mandateValid: true, approvedAmount: amount };
-        decision = "mandate_approved";
-      } else {
-        output = { mandateValid: false, violation: "Amount exceeds mandate limit" };
-        decision = "mandate_rejected";
-      }
-    } else if (bpmnType === BpmnNodeType.BehaviorAudit) {
-      const amount = (currentInput.amount as number) || 0;
-      const riskScore = Math.min(100, (amount / 10000) * 50 + Math.random() * 20);
-      if (riskScore > 80) {
-        output = { riskScore, flagged: true, action: "auto_review" };
-        decision = "behavior_flagged";
-      } else {
-        output = { riskScore, flagged: false, action: "cleared" };
-        decision = "behavior_cleared";
-      }
     } else {
       output = { ...currentInput };
     }

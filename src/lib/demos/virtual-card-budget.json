@@ -1,0 +1,31 @@
+{
+  "name": "Virtual Card Budget Agent",
+  "description": "Verify agent, validate budget, create cardholder and virtual card, record spend, check anomaly, then cancel card or log success.",
+  "nodes": [
+    { "id": "node-1", "type": "startEventNode", "position": { "x": 250, "y": 50 }, "data": { "label": "Start", "bpmnType": "startEvent" } },
+    { "id": "node-2", "type": "integrationNode", "position": { "x": 250, "y": 200 }, "data": { "label": "Verify Agent", "bpmnType": "integration", "integrationTemplateId": "tpl-kya-passport", "operationId": "verifyPassport" } },
+    { "id": "node-3", "type": "integrationNode", "position": { "x": 250, "y": 350 }, "data": { "label": "Validate Budget", "bpmnType": "integration", "integrationTemplateId": "tpl-kya-mandate", "operationId": "validateAction" } },
+    { "id": "node-4", "type": "integrationNode", "position": { "x": 250, "y": 500 }, "data": { "label": "Create Cardholder", "bpmnType": "integration", "integrationTemplateId": "tpl-stripe-issuing", "operationId": "createCardholder" } },
+    { "id": "node-5", "type": "integrationNode", "position": { "x": 250, "y": 650 }, "data": { "label": "Issue Virtual Card", "bpmnType": "integration", "integrationTemplateId": "tpl-stripe-issuing", "operationId": "createVirtualCard" } },
+    { "id": "node-6", "type": "integrationNode", "position": { "x": 250, "y": 800 }, "data": { "label": "Record Card Spend", "bpmnType": "integration", "integrationTemplateId": "tpl-kya-mandate", "operationId": "recordSpend" } },
+    { "id": "node-7", "type": "integrationNode", "position": { "x": 250, "y": 950 }, "data": { "label": "Check Anomaly", "bpmnType": "integration", "integrationTemplateId": "tpl-kya-monitor", "operationId": "checkAnomaly" } },
+    { "id": "node-8", "type": "gatewayNode", "position": { "x": 250, "y": 1100 }, "data": { "label": "Exhausted or Anomaly?", "bpmnType": "exclusiveGateway", "conditions": [{ "edgeId": "e-node-8-node-9", "expression": "(body.anomalyScore || 0) < 0.7 && body.autoRevoked !== true" }, { "edgeId": "e-node-8-node-cancel", "expression": "(body.anomalyScore || 0) >= 0.7 || body.autoRevoked === true" }] } },
+    { "id": "node-9", "type": "integrationNode", "position": { "x": 100, "y": 1250 }, "data": { "label": "Log Success", "bpmnType": "integration", "integrationTemplateId": "tpl-kya-monitor", "operationId": "logAudit" } },
+    { "id": "node-10", "type": "endEventNode", "position": { "x": 100, "y": 1400 }, "data": { "label": "End", "bpmnType": "endEvent" } },
+    { "id": "node-cancel", "type": "integrationNode", "position": { "x": 400, "y": 1250 }, "data": { "label": "Cancel Card", "bpmnType": "integration", "integrationTemplateId": "tpl-stripe-issuing", "operationId": "cancelCard" } },
+    { "id": "node-cancel-end", "type": "endEventNode", "position": { "x": 400, "y": 1400 }, "data": { "label": "End", "bpmnType": "endEvent" } }
+  ],
+  "edges": [
+    { "id": "e-node-1-node-2", "source": "node-1", "target": "node-2", "type": "conditional", "data": {} },
+    { "id": "e-node-2-node-3", "source": "node-2", "target": "node-3", "type": "conditional", "data": {} },
+    { "id": "e-node-3-node-4", "source": "node-3", "target": "node-4", "type": "conditional", "data": {} },
+    { "id": "e-node-4-node-5", "source": "node-4", "target": "node-5", "type": "conditional", "data": {} },
+    { "id": "e-node-5-node-6", "source": "node-5", "target": "node-6", "type": "conditional", "data": {} },
+    { "id": "e-node-6-node-7", "source": "node-6", "target": "node-7", "type": "conditional", "data": {} },
+    { "id": "e-node-7-node-8", "source": "node-7", "target": "node-8", "type": "conditional", "data": {} },
+    { "id": "e-node-8-node-9", "source": "node-8", "target": "node-9", "type": "conditional", "data": { "label": "OK" } },
+    { "id": "e-node-8-node-cancel", "source": "node-8", "target": "node-cancel", "type": "conditional", "data": { "label": "Cancel" } },
+    { "id": "e-node-9-node-10", "source": "node-9", "target": "node-10", "type": "conditional", "data": {} },
+    { "id": "e-node-cancel-end", "source": "node-cancel", "target": "node-cancel-end", "type": "conditional", "data": {} }
+  ]
+}
