@@ -348,13 +348,17 @@ async function executeIntegrationNode(
   ctx.set("_inputs", resolvedInputs);
 
   const effectiveMode: ExecutionMode =
-    type === "webhook" ? "live" : mode === "live" && credential ? "live" : "mock";
+    type === "webhook"
+      ? "live"
+      : type === "stripe_agent" && !credential
+        ? "mock"
+        : mode;
 
   const stripeAgentParams =
     type === "stripe_agent" && credential
       ? {
           apiKey: credential.apiKey ?? credential.secretKey ?? "",
-          operationId: operation?.id ?? operationIdFromNode ?? "createPaymentIntent",
+          operationId: operation.id ?? operationIdFromNode ?? "createPaymentIntent",
           resolvedInputs,
         }
       : undefined;
@@ -395,6 +399,6 @@ async function executeIntegrationNode(
     } : undefined,
     stripeAgentParams,
     mockConfig,
-    operationId: "default",
+    operationId: operation.id ?? "default",
   }, ctx);
 }
