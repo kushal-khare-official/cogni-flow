@@ -135,14 +135,14 @@ Each step that calls an external service is one serviceTask with one Integration
 
 - **http** — REST API: stepConfig uses method, path, bodyTemplate
 - **webhook** — REST API + Webhook Callback: call an API that sends results back via webhook
-- **mcp_tool** — MCP Tool Call: invoke tools from a Model Context Protocol server
-- **code** — Custom Code Script: execute JavaScript or Python code inline
-- **kafka** — Kafka Topic Consumer: consume messages from a Kafka topic
+- **mcp_tool** — MCP Tool Call: stepConfig uses toolName
+- **code** — Custom Code Script: stepConfig uses code, language
+- **kafka** — Kafka Topic Consumer: stepConfig or inputMapping for topic, groupId, brokers
 - **stripe_agent** — Stripe Agent Toolkit: execute Stripe API actions (payment intents, refunds, payment links, products) for agentic payment workflows
 
 ## KYA (Know Your Agent) Templates
 
-Use these integration template IDs for agent onboarding and guardrails:
+Use these integration template IDs for agent onboarding and guardrails (set integrationId to template id and operationId to the operation):
 - **tpl-kya-passport** — Agent identity: registerAgent, verifyPassport, getPassport, revokePassport
 - **tpl-kya-mandate** — Delegation: createMandate, validateAction, recordSpend
 - **tpl-kya-monitor** — Monitoring: checkAnomaly, logAudit, getAuditTrail

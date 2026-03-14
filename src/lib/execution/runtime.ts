@@ -86,7 +86,7 @@ export async function executeWorkflow(
         }
 
         break;
-      } else if (node.data.integrationId) {
+      } else if (node.data.integrationId || node.data.integrationTemplateId) {
         output = await executeIntegrationNode(node, ctx, mode);
       } else if (GATEWAY_TYPES.has(bpmnType)) {
         const nodeInput = gatherInputs(currentNodeId, edges, ctx);
@@ -119,7 +119,7 @@ export async function executeWorkflow(
         for (let r = 0; r < retryCount; r++) {
           try {
             await new Promise((res) => setTimeout(res, 1000 * (r + 1)));
-            if (node.data.integrationId) {
+            if (node.data.integrationId || node.data.integrationTemplateId) {
               output = await executeIntegrationNode(node, ctx, mode);
             }
             ctx.set(currentNodeId, output);
@@ -257,37 +257,65 @@ async function executeIntegrationNode(
   ctx: ExecutionContext,
   mode: ExecutionMode,
 ): Promise<Record<string, unknown>> {
-  const { integrationId, credentialId, inputMapping, stepConfig: rawStepConfig } = node.data;
-  if (!integrationId) {
+  const resolvedIntegrationId =
+    (node.data.integrationId as string) || (node.data.integrationTemplateId as string);
+  const { credentialId, inputMapping, stepConfig: rawStepConfig } = node.data;
+  if (!resolvedIntegrationId) {
     throw new Error("Service task missing integration ID");
   }
 
   const integration = await prisma.integration.findUnique({
-    where: { id: integrationId },
+    where: { id: resolvedIntegrationId },
   });
   if (!integration) {
-    throw new Error(`Integration not found: ${integrationId}`);
+    throw new Error(`Integration not found: ${resolvedIntegrationId}`);
   }
 
   const baseConfig = JSON.parse(integration.baseConfig);
   const mockConfig = JSON.parse(integration.mockConfig);
   const type = integration.type as IntegrationType;
 
-  // Build operation-like shape from node stepConfig (and legacy config overrides)
   const nodeConfig = (node.data.config ?? {}) as Record<string, unknown>;
   const stepConfig = (rawStepConfig ?? {}) as Record<string, unknown>;
+  const operationIdFromNode = node.data.operationId as string | undefined;
 
-  const operation = {
-    id: "default",
-    method: (stepConfig.method ?? nodeConfig.methodOverride ?? "GET") as string,
-    path: (stepConfig.path ?? nodeConfig.pathOverride ?? (baseConfig.defaultPath as string | undefined) ?? "") as string,
-    bodyTemplate: stepConfig.bodyTemplate ?? (nodeConfig.bodyOverride ? (typeof nodeConfig.bodyOverride === "string" ? (() => { try { return JSON.parse(nodeConfig.bodyOverride as string); } catch { return undefined; } })() : nodeConfig.bodyOverride) : undefined),
-    queryTemplate: stepConfig.queryTemplate as Record<string, string> | undefined,
-    headersOverride: (stepConfig.headersOverride ?? (nodeConfig.headersOverride ? (typeof nodeConfig.headersOverride === "string" ? (() => { try { return JSON.parse(nodeConfig.headersOverride as string); } catch { return undefined; } })() : nodeConfig.headersOverride) : undefined)) as Record<string, string> | undefined,
-    toolName: (stepConfig.toolName ?? nodeConfig.toolName ?? "") as string,
-    codeTemplate: (stepConfig.code ?? node.data.code) as string | undefined,
-    inputSchema: (stepConfig.inputSchema ?? []) as Array<{ key: string; default?: unknown }>,
-  };
+  const operationsJson = integration.operations ?? "[]";
+  const operations = JSON.parse(operationsJson) as Array<{
+    id: string;
+    method?: string;
+    path?: string;
+    bodyTemplate?: unknown;
+    queryTemplate?: Record<string, string>;
+    inputSchema?: Array<{ key: string; default?: unknown }>;
+  }>;
+  const predefinedOp =
+    operationIdFromNode && operations.length > 0
+      ? operations.find((op) => op.id === operationIdFromNode)
+      : undefined;
+
+  const operation = predefinedOp
+    ? {
+        id: predefinedOp.id,
+        method: (predefinedOp.method ?? stepConfig.method ?? "GET") as string,
+        path: (predefinedOp.path ?? stepConfig.path ?? "") as string,
+        bodyTemplate: predefinedOp.bodyTemplate ?? stepConfig.bodyTemplate,
+        queryTemplate: (predefinedOp.queryTemplate ?? stepConfig.queryTemplate) as Record<string, string> | undefined,
+        headersOverride: stepConfig.headersOverride as Record<string, string> | undefined,
+        toolName: (stepConfig.toolName ?? "") as string,
+        codeTemplate: (stepConfig.code ?? node.data.code) as string | undefined,
+        inputSchema: (predefinedOp.inputSchema ?? stepConfig.inputSchema ?? []) as Array<{ key: string; default?: unknown }>,
+      }
+    : {
+        id: operationIdFromNode ?? "default",
+        method: (stepConfig.method ?? nodeConfig.methodOverride ?? "GET") as string,
+        path: (stepConfig.path ?? nodeConfig.pathOverride ?? (baseConfig.defaultPath as string | undefined) ?? "") as string,
+        bodyTemplate: stepConfig.bodyTemplate ?? (nodeConfig.bodyOverride ? (typeof nodeConfig.bodyOverride === "string" ? (() => { try { return JSON.parse(nodeConfig.bodyOverride as string); } catch { return undefined; } })() : nodeConfig.bodyOverride) : undefined),
+        queryTemplate: stepConfig.queryTemplate as Record<string, string> | undefined,
+        headersOverride: (stepConfig.headersOverride ?? (nodeConfig.headersOverride ? (typeof nodeConfig.headersOverride === "string" ? (() => { try { return JSON.parse(nodeConfig.headersOverride as string); } catch { return undefined; } })() : nodeConfig.headersOverride) : undefined)) as Record<string, string> | undefined,
+        toolName: (stepConfig.toolName ?? nodeConfig.toolName ?? "") as string,
+        codeTemplate: (stepConfig.code ?? node.data.code) as string | undefined,
+        inputSchema: (stepConfig.inputSchema ?? []) as Array<{ key: string; default?: unknown }>,
+      };
 
   let credential: Record<string, string> | null = null;
   if (credentialId && mode === "live") {
@@ -325,7 +353,7 @@ async function executeIntegrationNode(
     type === "stripe_agent" && credential
       ? {
           apiKey: credential.apiKey ?? credential.secretKey ?? "",
-          operationId: operation?.id ?? operationId ?? "createPaymentIntent",
+          operationId: operation?.id ?? operationIdFromNode ?? "createPaymentIntent",
           resolvedInputs,
         }
       : undefined;

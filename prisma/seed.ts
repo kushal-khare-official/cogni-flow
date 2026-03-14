@@ -28,6 +28,7 @@ const BUILT_IN_INTEGRATIONS = [
       latencyMs: 150,
       defaultResponse: { status: 200, body: { message: "OK" } },
     }),
+    operations: JSON.stringify([]),
     isBuiltIn: true,
   },
   {
@@ -50,6 +51,7 @@ const BUILT_IN_INTEGRATIONS = [
       latencyMs: 200,
       defaultResponse: { accepted: true, callbackId: "cb_mock_123" },
     }),
+    operations: JSON.stringify([]),
     isBuiltIn: true,
   },
   {
@@ -65,6 +67,7 @@ const BUILT_IN_INTEGRATIONS = [
       latencyMs: 100,
       defaultResponse: { result: "Mock MCP tool response" },
     }),
+    operations: JSON.stringify([]),
     isBuiltIn: true,
   },
   {
@@ -80,6 +83,7 @@ const BUILT_IN_INTEGRATIONS = [
       latencyMs: 50,
       defaultResponse: { result: "mock code output" },
     }),
+    operations: JSON.stringify([]),
     isBuiltIn: true,
   },
   {
@@ -103,6 +107,7 @@ const BUILT_IN_INTEGRATIONS = [
       latencyMs: 100,
       defaultResponse: { topic: "test-topic", partition: 0, offset: "42", value: { orderId: "ord-123", amount: 99.99 } },
     }),
+    operations: JSON.stringify([]),
     isBuiltIn: true,
   },
   // ─── KYA (Know Your Agent) templates ───
