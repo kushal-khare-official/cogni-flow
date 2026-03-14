@@ -66,6 +66,13 @@ const bpmnNodeSchema = z.object({
       description: z.string().describe("Brief description of what this integration does"),
       baseConfig: z.array(z.object({ key: z.string(), value: z.string() })).describe("Base configuration key-value pairs (e.g. baseUrl, brokers, topic)"),
     }).nullable().describe("Define a new integration if no existing one fits"),
+    requestBody: z.array(z.object({
+      key: z.string().describe("Field name"),
+      type: z.enum(["string", "number", "boolean", "object", "array"]).describe("Field type"),
+      required: z.boolean().describe("Whether the field is required"),
+      description: z.string().describe("Brief description of the field"),
+    })).nullable().describe("REST API request body schema (startEvent only)"),
+    webhookUrl: z.string().nullable().describe("URL to POST workflow results to when complete (endEvent only)"),
   }),
 });
 

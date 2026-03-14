@@ -77,6 +77,14 @@ export async function executeWorkflow(
         });
         ctx.set(currentNodeId, output);
         callbacks?.onNodeComplete?.(currentNodeId, output);
+
+        const webhookUrl = node.data.webhookUrl as string | undefined;
+        if (webhookUrl) {
+          deliverWebhookResponse(webhookUrl, workflowId, ctx.toJSON(), undefined).catch((err) => {
+            console.error("[runtime/webhook-response]", err);
+          });
+        }
+
         break;
       } else if (node.data.integrationTemplateId) {
         output = await executeIntegrationNode(node, ctx, mode);
@@ -223,6 +231,25 @@ function gatherInputsFromContext(
     }
   }
   return merged;
+}
+
+async function deliverWebhookResponse(
+  webhookUrl: string,
+  workflowId: string,
+  context: Record<string, unknown>,
+  error: string | undefined,
+): Promise<void> {
+  await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      workflowId,
+      status: error ? "failed" : "completed",
+      output: context,
+      error: error ?? null,
+      completedAt: new Date().toISOString(),
+    }),
+  });
 }
 
 async function executeIntegrationNode(
