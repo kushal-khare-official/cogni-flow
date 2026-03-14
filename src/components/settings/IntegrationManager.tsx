@@ -630,31 +630,8 @@ export function IntegrationManager() {
                   <div className="rounded-md border border-blue-100 bg-blue-50 p-2.5 dark:border-blue-900/50 dark:bg-blue-950/30">
                     <p className="text-xs text-blue-700 dark:text-blue-300">
                       Webhook URL is auto-generated when the workflow is published.
-                      Configure the default HTTP method and request body below.
+                      Method and body are configured per workflow step in the Service Task node.
                     </p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs">HTTP Method</Label>
-                      <Select value={formMethod} onValueChange={(v) => setFormMethod(v ?? "POST")}>
-                        <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].map((m) => (
-                            <SelectItem key={m} value={m}>{m}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Request Body <span className="font-normal text-zinc-400">(JSON)</span></Label>
-                    <Textarea
-                      value={formRequestBody}
-                      onChange={(e) => setFormRequestBody(e.target.value)}
-                      placeholder='{"payload": "{{payload}}"}'
-                      rows={3}
-                      className="resize-none font-mono text-xs"
-                    />
                   </div>
                 </div>
               )}

@@ -20,19 +20,24 @@ export async function logActivity(data: LogActivityInput) {
 
   const flagged = score >= 70;
   const flagReason = flagged ? factors.join("; ") : null;
+  const anomalyScore = score / 100;
+  const amountCents =
+    data.amount != null ? Math.round(Number(data.amount) * 100) : null;
 
-  const activity = await prisma.agentActivity.create({
+  const activity = await prisma.agentAuditLog.create({
     data: {
-      agentId: data.agentId,
+      agentPassportId: data.agentId,
       action: data.action,
-      resource: data.resource ?? "",
-      amount: data.amount ?? null,
-      currency: data.currency ?? null,
-      metadata: JSON.stringify(data.metadata ?? {}),
-      mandateId: data.mandateId ?? null,
-      riskScore: score,
-      flagged,
-      flagReason,
+      amountCents,
+      status: flagged ? "flagged" : "completed",
+      anomalyScore,
+      metadata: JSON.stringify({
+        ...(data.metadata ?? {}),
+        resource: data.resource,
+        currency: data.currency,
+        mandateId: data.mandateId,
+        flagReason,
+      }),
     },
   });
 
@@ -53,14 +58,14 @@ export async function computeRiskScore(
 
   // 1. Amount deviation (0-30 points)
   if (activity.amount !== undefined && activity.amount !== null) {
-    const historicalActivities = await prisma.agentActivity.findMany({
-      where: { agentId, amount: { not: null } },
+    const historicalActivities = await prisma.agentAuditLog.findMany({
+      where: { agentPassportId: agentId, amountCents: { not: null } },
       orderBy: { createdAt: "desc" },
       take: 50,
     });
 
     if (historicalActivities.length > 0) {
-      const amounts = historicalActivities.map((a) => a.amount!);
+      const amounts = historicalActivities.map((a) => (a.amountCents ?? 0) / 100);
       const avg = amounts.reduce((s, v) => s + v, 0) / amounts.length;
       const stdDev = Math.sqrt(
         amounts.reduce((s, v) => s + (v - avg) ** 2, 0) / amounts.length,
@@ -89,8 +94,8 @@ export async function computeRiskScore(
 
   // 2. Rate anomaly — actions in the last hour (0-25 points)
   const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
-  const recentCount = await prisma.agentActivity.count({
-    where: { agentId, createdAt: { gte: oneHourAgo } },
+  const recentCount = await prisma.agentAuditLog.count({
+    where: { agentPassportId: agentId, createdAt: { gte: oneHourAgo } },
   });
   if (recentCount > 50) {
     score += 25;
@@ -106,16 +111,22 @@ export async function computeRiskScore(
   // 3. Resource category shift (0-25 points)
   if (activity.resource) {
     const currentCategory = activity.resource.split(".")[0] || activity.resource;
-    const recentActivities = await prisma.agentActivity.findMany({
-      where: { agentId, resource: { not: "" } },
+    const recentActivities = await prisma.agentAuditLog.findMany({
+      where: { agentPassportId: agentId },
       orderBy: { createdAt: "desc" },
       take: 20,
     });
 
     if (recentActivities.length >= 5) {
-      const recentCategories = recentActivities.map(
-        (a) => a.resource.split(".")[0] || a.resource,
-      );
+      const recentCategories = recentActivities.map((a) => {
+        try {
+          const meta = JSON.parse(a.metadata) as { resource?: string };
+          const res = meta?.resource ?? "";
+          return res.split(".")[0] || res || "unknown";
+        } catch {
+          return "unknown";
+        }
+      });
       const categoryFreq = new Map<string, number>();
       for (const cat of recentCategories) {
         categoryFreq.set(cat, (categoryFreq.get(cat) ?? 0) + 1);
@@ -155,21 +166,26 @@ export async function checkAndAutoRevoke(
 ): Promise<{ revoked: boolean; reason?: string }> {
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
 
-  const flaggedRecent = await prisma.agentActivity.findMany({
+  const flaggedRecent = await prisma.agentAuditLog.findMany({
     where: {
-      agentId,
-      flagged: true,
+      agentPassportId: agentId,
       createdAt: { gte: oneHourAgo },
+      OR: [
+        { status: "flagged" },
+        { anomalyScore: { gte: 0.7 } },
+      ],
     },
     orderBy: { createdAt: "desc" },
   });
 
-  const criticalActivity = flaggedRecent.find((a) => a.riskScore > 90);
+  const criticalActivity = flaggedRecent.find(
+    (a) => a.anomalyScore != null && a.anomalyScore > 0.9,
+  );
   if (criticalActivity) {
     await revokeAgent(agentId);
     return {
       revoked: true,
-      reason: `Critical risk score ${criticalActivity.riskScore} on activity ${criticalActivity.id}`,
+      reason: `Critical anomaly score ${criticalActivity.anomalyScore} on activity ${criticalActivity.id}`,
     };
   }
 
@@ -196,26 +212,36 @@ export async function getActivitySummary(
 }> {
   const since = new Date(Date.now() - hours * 60 * 60 * 1000);
 
-  const activities = await prisma.agentActivity.findMany({
-    where: { agentId, createdAt: { gte: since } },
+  const activities = await prisma.agentAuditLog.findMany({
+    where: { agentPassportId: agentId, createdAt: { gte: since } },
   });
 
   const totalActions = activities.length;
-  const flaggedCount = activities.filter((a) => a.flagged).length;
+  const flaggedCount = activities.filter(
+    (a) => a.status === "flagged" || (a.anomalyScore != null && a.anomalyScore >= 0.7),
+  ).length;
+  const scores = activities
+    .map((a) => (a.anomalyScore != null ? a.anomalyScore * 100 : 0))
+    .filter((s) => s > 0);
   const averageRiskScore =
-    totalActions > 0
-      ? activities.reduce((sum, a) => sum + a.riskScore, 0) / totalActions
+    scores.length > 0
+      ? scores.reduce((sum, s) => sum + s, 0) / scores.length
       : 0;
 
-  const financialActivities = activities.filter((a) => a.amount !== null);
-  const totalSpend = financialActivities.reduce(
-    (sum, a) => sum + (a.amount ?? 0),
-    0,
-  );
-  const currency =
-    financialActivities.length > 0
-      ? financialActivities[0].currency
-      : null;
+  const financialActivities = activities.filter((a) => a.amountCents != null);
+  const totalSpend =
+    financialActivities.reduce((sum, a) => sum + (a.amountCents ?? 0), 0) / 100;
+  let currency: string | null = null;
+  if (financialActivities.length > 0) {
+    try {
+      const meta = JSON.parse(financialActivities[0].metadata) as {
+        currency?: string;
+      };
+      currency = meta?.currency ?? null;
+    } catch {
+      // ignore
+    }
+  }
 
   return {
     totalActions,

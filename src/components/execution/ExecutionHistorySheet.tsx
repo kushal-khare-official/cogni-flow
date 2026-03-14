@@ -136,22 +136,29 @@ export function ExecutionHistorySheet({
                               nodeId: string;
                               duration: number;
                               decision?: string;
+                              input?: unknown;
                               output?: unknown;
                             },
                             i: number
                           ) => {
-                            const hasOutput =
-                              step.output !== undefined &&
-                              step.output !== null &&
-                              (typeof step.output !== "object" ||
-                                Object.keys(
-                                  step.output as Record<string, unknown>
-                                ).length > 0);
+                            const inputStr =
+                              step.input !== undefined && step.input !== null
+                                ? typeof step.input === "string"
+                                  ? step.input
+                                  : JSON.stringify(step.input, null, 2)
+                                : "{}";
                             const outputStr =
-                              hasOutput &&
-                              (typeof step.output === "string"
-                                ? step.output
-                                : JSON.stringify(step.output, null, 2));
+                              step.output !== undefined && step.output !== null
+                                ? typeof step.output === "string"
+                                  ? step.output
+                                  : JSON.stringify(step.output, null, 2)
+                                : "{}";
+                            const outObj = step.output && typeof step.output === "object" && !Array.isArray(step.output) ? (step.output as Record<string, unknown>) : null;
+                            const bodyStr = outObj?.body !== undefined && outObj?.body !== null
+                              ? typeof outObj.body === "string"
+                                ? outObj.body
+                                : JSON.stringify(outObj.body, null, 2)
+                              : null;
                             return (
                               <div
                                 key={i}
@@ -170,13 +177,29 @@ export function ExecutionHistorySheet({
                                     </span>
                                   )}
                                 </div>
-                                {hasOutput && outputStr && (
+                                <details className="group">
+                                  <summary className="cursor-pointer px-2 py-1 text-[10px] font-medium text-zinc-500 hover:bg-zinc-100">
+                                    Input
+                                  </summary>
+                                  <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all border-t border-zinc-200 bg-zinc-100/80 px-2 py-1.5 font-mono text-[10px] text-zinc-700">
+                                    {inputStr}
+                                  </pre>
+                                </details>
+                                <details className="group">
+                                  <summary className="cursor-pointer px-2 py-1 text-[10px] font-medium text-zinc-500 hover:bg-zinc-100">
+                                    Output
+                                  </summary>
+                                  <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all border-t border-zinc-200 bg-zinc-100/80 px-2 py-1.5 font-mono text-[10px] text-zinc-700">
+                                    {outputStr}
+                                  </pre>
+                                </details>
+                                {bodyStr != null && (
                                   <details className="group">
                                     <summary className="cursor-pointer px-2 py-1 text-[10px] font-medium text-zinc-500 hover:bg-zinc-100">
-                                      Response
+                                      Response (integration body)
                                     </summary>
                                     <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all border-t border-zinc-200 bg-zinc-100/80 px-2 py-1.5 font-mono text-[10px] text-zinc-700">
-                                      {outputStr}
+                                      {bodyStr}
                                     </pre>
                                   </details>
                                 )}

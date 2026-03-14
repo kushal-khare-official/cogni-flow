@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { SlidersHorizontal, Trash2, Plus, X, Send, Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { useWorkflowStore } from "@/lib/store/workflow-store";
 import { useIntegrationStore } from "@/lib/store/integration-store";
@@ -16,6 +16,8 @@ import {
   collectLoopBody,
   findLastStepInLoop,
 } from "@/lib/workflow/loop-utils";
+import { ExecutionContext } from "@/lib/execution/context";
+import { resolveExpression, resolveTemplate } from "@/lib/execution/expression";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -57,6 +59,7 @@ export function NodeInspector() {
     error?: string;
   } | null>(null);
   const [testToken, setTestToken] = useState("");
+  const [testInputJson, setTestInputJson] = useState("{}");
 
   const node = nodes.find((n) => n.id === selectedNodeId);
 
@@ -85,6 +88,26 @@ export function NodeInspector() {
   const selectedIntegration = data.integrationId
     ? integrations.find((t) => t.id === data.integrationId)
     : undefined;
+
+  const operationId = data.operationId as string | undefined;
+  const resolvedOperation =
+    selectedIntegration && operationId
+      ? (() => {
+          try {
+            const ops = JSON.parse(selectedIntegration.operations ?? "[]") as Array<{
+              id: string;
+              name?: string;
+              method?: string;
+              path?: string;
+              bodyTemplate?: unknown;
+              inputSchema?: unknown[];
+            }>;
+            return ops.find((o) => o.id === operationId) ?? null;
+          } catch {
+            return null;
+          }
+        })()
+      : null;
 
   const integrationType = selectedIntegration?.type;
   const stepConfig = (data.stepConfig ?? {}) as Record<string, unknown>;
@@ -117,24 +140,61 @@ export function NodeInspector() {
       setTestResult({ status: 0, statusText: "", body: "", error: "Integration has no Base URL." });
       return;
     }
-    const path = (stepConfig.path as string)?.trim() ?? (base.defaultPath as string)?.trim() ?? "";
-    const url = path ? `${baseUrl.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}` : baseUrl;
-    const method = ((stepConfig.method as string) ?? (base.defaultMethod as string) ?? "GET").toUpperCase();
     setTestLoading(true);
     setTestResult(null);
     try {
+      // Build a minimal execution context so path/body templates resolve (e.g. {{node-1.name}}, {{name}})
+      let node1Data: Record<string, unknown> = {};
+      try {
+        const parsed = JSON.parse(testInputJson.trim() || "{}");
+        if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+          node1Data = parsed;
+        }
+      } catch {
+        // keep {}
+      }
+      const ctx = new ExecutionContext();
+      ctx.set("node-1", node1Data);
+
+      const inputMapping = (data.inputMapping ?? {}) as Record<string, string>;
+      const resolvedInputs: Record<string, unknown> = {};
+      for (const [key, expr] of Object.entries(inputMapping)) {
+        resolvedInputs[key] = resolveExpression(expr, ctx);
+      }
+      ctx.set("_inputs", resolvedInputs);
+
+      const pathTemplate = (stepConfig.path as string)?.trim() ?? (base.defaultPath as string)?.trim() ?? "";
+      const resolvedPath = pathTemplate ? String(resolveExpression(pathTemplate, ctx)) : "";
+      const baseUrlNorm = baseUrl.replace(/\/$/, "");
+      const url = resolvedPath
+        ? `${baseUrlNorm}${resolvedPath.startsWith("/") ? resolvedPath : `/${resolvedPath}`}`
+        : baseUrlNorm;
+
+      const method = ((stepConfig.method as string) ?? (base.defaultMethod as string) ?? "GET").toUpperCase();
+
       const headers: Record<string, string> = {};
       const defaultHeaders = base.defaultHeaders as Record<string, string> | undefined;
       if (defaultHeaders && typeof defaultHeaders === "object") Object.assign(headers, defaultHeaders);
       if ((base.authType as string) === "bearer" && testToken.trim()) {
         headers["Authorization"] = `Bearer ${testToken.trim()}`;
       }
+
       let body: string | undefined;
-      const bodyTemplate = stepConfig.bodyTemplate ?? base.defaultRequestBody;
+      const bodyTemplate = stepConfig.bodyTemplate ?? resolvedOperation?.bodyTemplate ?? base.defaultRequestBody;
       if (method !== "GET" && method !== "HEAD" && bodyTemplate !== undefined && bodyTemplate !== null) {
-        body = typeof bodyTemplate === "string" ? bodyTemplate : JSON.stringify(bodyTemplate);
+        let template = bodyTemplate;
+        if (typeof template === "string" && template.trim()) {
+          try {
+            template = JSON.parse(template) as Record<string, unknown>;
+          } catch {
+            // use as string, resolveTemplate will substitute {{...}} in it
+          }
+        }
+        const resolvedBody = resolveTemplate(template, ctx);
+        body = typeof resolvedBody === "string" ? resolvedBody : JSON.stringify(resolvedBody);
         if (!headers["Content-Type"]) headers["Content-Type"] = "application/json";
       }
+
       const res = await fetch(url, { method, headers, body });
       const text = await res.text();
       let parsed: string;
@@ -277,8 +337,7 @@ export function NodeInspector() {
         </Button>
       </div>
 
-      {/* Start Event — REST API request body schema */}
-      {data.bpmnType === BpmnNodeType.StartEvent && (
+      {(data.bpmnType as BpmnNodeType) === BpmnNodeType.StartEvent ? (
         <>
           <Separator />
           <div className="space-y-3">
@@ -370,10 +429,10 @@ export function NodeInspector() {
             )}
           </div>
         </>
-      )}
+      ) : null}
 
       {/* End Event — Webhook response URL */}
-      {data.bpmnType === BpmnNodeType.EndEvent && (
+      {(data.bpmnType as BpmnNodeType) === BpmnNodeType.EndEvent ? (
         <>
           <Separator />
           <div className="space-y-3">
@@ -403,7 +462,7 @@ export function NodeInspector() {
             </div>
           </div>
         </>
-      )}
+      ) : null}
 
       {/* Gateway conditions */}
       {isGateway && outgoingEdges.length > 0 && (
@@ -506,10 +565,16 @@ export function NodeInspector() {
                   <span className="font-medium text-zinc-600">{selectedIntegration.name}</span>
                   <span className="mx-1">·</span>
                   <Badge variant="outline" className="text-[9px]">{selectedIntegration.type}</Badge>
-                  {integrationType === "http" && (stepConfig.method || stepConfig.path) ? (
+                  {resolvedOperation?.name && (
                     <>
                       <span className="mx-1">·</span>
-                      <span className="font-mono">{(stepConfig.method as string) ?? "GET"} {(stepConfig.path as string) ?? "/"}</span>
+                      <span className="font-medium">{resolvedOperation.name}</span>
+                    </>
+                  )}
+                  {integrationType === "http" && (stepConfig.method || stepConfig.path || resolvedOperation?.method || resolvedOperation?.path) ? (
+                    <>
+                      <span className="mx-1">·</span>
+                      <span className="font-mono">{(stepConfig.method as string) ?? resolvedOperation?.method ?? "GET"} {(stepConfig.path as string) ?? resolvedOperation?.path ?? "/"}</span>
                     </>
                   ) : null}
                   {integrationType === "code" && (
@@ -532,11 +597,17 @@ export function NodeInspector() {
                   <>
                     <Separator />
                     <Label className="text-xs font-semibold text-zinc-600">Step config</Label>
+                    {resolvedOperation && (
+                      <p className="text-[10px] text-zinc-400 mb-1.5">
+                        Operation: <span className="font-medium text-zinc-600">{resolvedOperation.name}</span>
+                        {!stepConfig.method && !stepConfig.path && " (method/path from integration)"}
+                      </p>
+                    )}
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1">
                         <Label className="text-[11px] text-zinc-500">Method</Label>
                         <Select
-                          value={(stepConfig.method as string) ?? "GET"}
+                          value={(stepConfig.method as string) ?? resolvedOperation?.method ?? "GET"}
                           onValueChange={(v) => update({ stepConfig: { ...stepConfig, method: v } })}
                         >
                           <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
@@ -550,7 +621,7 @@ export function NodeInspector() {
                       <div className="space-y-1">
                         <Label className="text-[11px] text-zinc-500">Path</Label>
                         <Input
-                          value={(stepConfig.path as string) ?? ""}
+                          value={(stepConfig.path as string) ?? resolvedOperation?.path ?? ""}
                           onChange={(e) => update({ stepConfig: { ...stepConfig, path: e.target.value } })}
                           placeholder="/resource/{{id}}"
                           className="font-mono text-xs"
@@ -560,7 +631,7 @@ export function NodeInspector() {
                     <div className="space-y-1">
                       <Label className="text-[11px] text-zinc-500">Body template (JSON)</Label>
                       <Textarea
-                        value={typeof stepConfig.bodyTemplate === "string" ? stepConfig.bodyTemplate : (stepConfig.bodyTemplate ? JSON.stringify(stepConfig.bodyTemplate, null, 2) : "")}
+                        value={typeof stepConfig.bodyTemplate === "string" ? stepConfig.bodyTemplate : (stepConfig.bodyTemplate ? JSON.stringify(stepConfig.bodyTemplate, null, 2) : (resolvedOperation?.bodyTemplate ? JSON.stringify(resolvedOperation.bodyTemplate, null, 2) : ""))}
                         onChange={(e) => {
                           const raw = e.target.value.trim();
                           let bodyTemplate: unknown = undefined;
@@ -577,6 +648,18 @@ export function NodeInspector() {
                     <Separator />
                     <div className="space-y-2">
                       <Label className="text-xs font-semibold text-zinc-600">Test integration</Label>
+                      <div className="space-y-1">
+                        <Label className="text-[11px] text-zinc-500">Test input (JSON) — used to resolve {""}
+                          <code className="rounded bg-zinc-100 px-0.5 text-[10px]">{"{{node-1.*}}"}</code> and input mapping in path/body
+                        </Label>
+                        <Textarea
+                          value={testInputJson}
+                          onChange={(e) => setTestInputJson(e.target.value)}
+                          placeholder='{"name": "My Agent", "modelProvider": "openai"}'
+                          rows={2}
+                          className="resize-none font-mono text-xs"
+                        />
+                      </div>
                       {(integrationBaseConfig.authType as string) === "bearer" && (
                         <div className="space-y-1">
                           <Label className="text-[11px] text-zinc-500">Test token (optional, not saved)</Label>
@@ -785,8 +868,51 @@ export function NodeInspector() {
         </>
       )}
 
+      {/* Output Mapping — integration response → step output (integration nodes only) */}
+      {(data.integrationId ?? data.integrationTemplateId) && (
+        <>
+          <Separator />
+          <div className="space-y-3">
+            <Label className="text-xs font-semibold text-zinc-600">Output Mapping</Label>
+            <p className="text-[10px] text-zinc-400">
+              Map integration response to step output. Key = step output field (e.g. <code className="rounded bg-zinc-100 px-1 text-[9px]">id</code>). Value = dot path into response (e.g. <code className="rounded bg-zinc-100 px-1 text-[9px]">body.id</code>, <code className="rounded bg-zinc-100 px-1 text-[9px]">body</code> for HTTP).
+            </p>
+            {Object.entries(data.outputMapping ?? {}).map(([key, value]) => (
+              <InputMappingRow
+                key={key}
+                fieldKey={key}
+                fieldValue={value}
+                onChange={(newKey, newValue) => {
+                  const current = { ...(data.outputMapping ?? {}) };
+                  if (newKey !== key) delete current[key];
+                  current[newKey] = newValue;
+                  update({ outputMapping: current });
+                }}
+                onRemove={() => {
+                  const current = { ...(data.outputMapping ?? {}) };
+                  delete current[key];
+                  update({ outputMapping: Object.keys(current).length ? current : undefined });
+                }}
+              />
+            ))}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const current = { ...(data.outputMapping ?? {}) };
+                current[`out_${Object.keys(current).length + 1}`] = "";
+                update({ outputMapping: current });
+              }}
+              className="gap-1 text-[10px]"
+            >
+              <Plus className="size-3" /> Add Output Mapping
+            </Button>
+          </div>
+        </>
+      )}
+
       {/* Loop configuration */}
-      {data.bpmnType === BpmnNodeType.Loop && (
+      {(data.bpmnType as BpmnNodeType) === BpmnNodeType.Loop ? (
         <>
           <Separator />
           <div className="space-y-3">
@@ -846,7 +972,7 @@ export function NodeInspector() {
             })()}
           </div>
         </>
-      )}
+      ) : null}
 
       {/* Threshold */}
       {data.threshold !== undefined && (

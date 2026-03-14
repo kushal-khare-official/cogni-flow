@@ -55,6 +55,7 @@ export interface BpmnNodeData {
   stepConfig?: Record<string, unknown>;
   credentialId?: string;
   inputMapping?: Record<string, string>;
+  outputMapping?: Record<string, string>;
   outputSchema?: { key: string; type?: string; description?: string }[];
   // Code-specific
   code?: string;

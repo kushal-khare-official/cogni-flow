@@ -4,7 +4,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 model Workflow {
@@ -21,6 +21,7 @@ model Workflow {
   executionRuns    ExecutionRun[]
   webhookEndpoints WebhookEndpoint[]
   schedules        Schedule[]
+  mandates         AgentMandate[]
 }
 
 model ValidationRun {
@@ -39,9 +40,10 @@ model Integration {
   name             String
   icon             String   @default("plug")
   category         String   @default("custom")
-  type             String   // "http" | "mcp_tool" | "code" | "webhook" | "kafka"
+  type             String   // "http" | "mcp_tool" | "code" | "webhook" | "kafka" | "stripe_agent"
   description      String   @default("")
   baseConfig       String   @default("{}")
+  operations       String   @default("[]")
   credentialSchema String   @default("[]")
   mockConfig       String   @default("{}")
   isBuiltIn        Boolean  @default(false)
@@ -105,4 +107,75 @@ model McpServerConfig {
   args      String  @default("[]")
   url       String?
   env       String  @default("{}")
+}
+
+model AgentPassport {
+  id              String    @id @default(cuid())
+  name            String
+  fingerprint     String    @unique
+  modelProvider   String
+  modelVersion    String
+  creatorName     String
+  creatorVerified Boolean   @default(false)
+  status          String    @default("active")
+  revokedReason   String?
+  stripeKeyScope  String    @default("[]")
+  authMethod      String    @default("api_key")
+  metadata        String    @default("{}")
+  issuedAt        DateTime  @default(now())
+  expiresAt       DateTime?
+  revokedAt       DateTime?
+
+  mandates  AgentMandate[]
+  auditLogs AgentAuditLog[]
+}
+
+model AgentMandate {
+  id                 String    @id @default(cuid())
+  agentPassportId    String
+  workflowId         String?
+  description        String
+  maxAmountCents     Int       @default(5000)
+  maxTotalSpendCents Int       @default(50000)
+  spentCents         Int       @default(0)
+  allowedActions     String    @default("[]")
+  allowedMCCs        String    @default("[]")
+  ttlSeconds         Int?
+  status             String    @default("active")
+  signatureHash      String
+  createdAt          DateTime  @default(now())
+  expiresAt          DateTime?
+
+  agentPassport AgentPassport @relation(fields: [agentPassportId], references: [id], onDelete: Cascade)
+  workflow      Workflow?     @relation(fields: [workflowId], references: [id], onDelete: SetNull)
+}
+
+model AgentAuditLog {
+  id              String   @id @default(cuid())
+  agentPassportId String
+  executionRunId  String?
+  nodeId          String?
+  action          String
+  stripeObjectId  String?
+  amountCents     Int?
+  status          String
+  anomalyScore    Float?
+  metadata        String   @default("{}")
+  createdAt       DateTime @default(now())
+
+  agentPassport AgentPassport @relation(fields: [agentPassportId], references: [id], onDelete: Cascade)
+}
+
+model AgenticCheckoutSession {
+  id               String   @id @default(cuid())
+  status           String   @default("not_ready_for_payment")
+  paymentIntentId  String?
+  amount           Int      @default(0)
+  currency         String   @default("usd")
+  lineItems        String   @default("[]")
+  totals           String   @default("[]")
+  workflowId       String?
+  metadata         String   @default("{}")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }

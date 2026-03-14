@@ -36,6 +36,8 @@ import { CredentialManager } from "@/components/settings/CredentialManager";
 import { IntegrationManager } from "@/components/settings/IntegrationManager";
 import { ScheduleConfig } from "@/components/settings/ScheduleConfig";
 import { WebhookConfig } from "@/components/settings/WebhookConfig";
+import { AgentRegistryPanel } from "@/components/agents/AgentRegistryPanel";
+import { DemoGallery } from "@/components/demos/DemoGallery";
 
 const AI_PROVIDERS = [
   { value: "openai", label: "OpenAI" },
@@ -175,6 +177,8 @@ export function Header() {
           <Separator orientation="vertical" className="!h-5 bg-zinc-700" />
 
           <BpmnImportDialog />
+          <DemoGallery />
+          <AgentRegistryPanel />
           <IntegrationManager />
           <CredentialManager />
           <ScheduleConfig />

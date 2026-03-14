@@ -17,16 +17,16 @@ interface CreateMandateInput {
 export async function createMandate(data: CreateMandateInput) {
   const ttl = data.ttlSeconds ?? 86400;
   const expiresAt = new Date(Date.now() + ttl * 1000);
+  const maxAmountCents = Math.round((data.maxTransactionAmount ?? 0) * 100);
+  const maxTotalSpendCents = Math.round((data.maxDailyAmount ?? 0) * 100);
 
   const terms = [
     data.agentId,
     data.workflowId ?? "",
-    String(data.maxTransactionAmount),
-    String(data.maxDailyAmount),
-    data.currency ?? "usd",
+    String(maxAmountCents),
+    String(maxTotalSpendCents),
     JSON.stringify(data.allowedMCCs ?? []),
     JSON.stringify(data.allowedOperations ?? []),
-    JSON.stringify(data.allowedEndpoints ?? []),
     String(ttl),
   ].join("|");
 
@@ -37,19 +37,17 @@ export async function createMandate(data: CreateMandateInput) {
 
   return prisma.agentMandate.create({
     data: {
-      agentId: data.agentId,
+      agentPassportId: data.agentId,
       workflowId: data.workflowId ?? null,
       description: data.description ?? "",
-      maxTransactionAmount: data.maxTransactionAmount,
-      maxDailyAmount: data.maxDailyAmount,
-      currency: data.currency ?? "usd",
+      maxAmountCents: Math.max(maxAmountCents, 5000),
+      maxTotalSpendCents: Math.max(maxTotalSpendCents, 50000),
       allowedMCCs: JSON.stringify(data.allowedMCCs ?? []),
-      allowedOperations: JSON.stringify(data.allowedOperations ?? []),
-      allowedEndpoints: JSON.stringify(data.allowedEndpoints ?? []),
+      allowedActions: JSON.stringify(data.allowedOperations ?? []),
       ttlSeconds: ttl,
       expiresAt,
       signatureHash,
-      active: true,
+      status: "active",
     },
   });
 }
@@ -67,8 +65,11 @@ export async function validateTransaction(
   transaction: TransactionInput,
 ): Promise<{ allowed: boolean; mandateId?: string; violations: string[] }> {
   const violations: string[] = [];
+  const amountCents = Math.round((transaction.amount ?? 0) * 100);
 
-  const agent = await prisma.agent.findUnique({ where: { id: agentId } });
+  const agent = await prisma.agentPassport.findUnique({
+    where: { id: agentId },
+  });
   if (!agent) return { allowed: false, violations: ["Agent not found"] };
   if (agent.status !== "active") {
     return {
@@ -81,9 +82,9 @@ export async function validateTransaction(
 
   const mandates = await prisma.agentMandate.findMany({
     where: {
-      agentId,
-      active: true,
-      expiresAt: { gt: now },
+      agentPassportId: agentId,
+      status: "active",
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
     },
   });
 
@@ -91,33 +92,19 @@ export async function validateTransaction(
     return { allowed: false, violations: ["No active mandates for this agent"] };
   }
 
-  // Check each mandate — find the first that fully permits the transaction
   for (const mandate of mandates) {
     const mandateViolations: string[] = [];
 
-    if (transaction.amount > mandate.maxTransactionAmount) {
+    if (amountCents > mandate.maxAmountCents) {
       mandateViolations.push(
-        `Amount ${transaction.amount} exceeds per-transaction limit ${mandate.maxTransactionAmount}`,
+        `Amount ${transaction.amount} exceeds per-transaction limit ${mandate.maxAmountCents / 100}`,
       );
     }
 
-    const startOfDay = new Date(now);
-    startOfDay.setHours(0, 0, 0, 0);
-    const dailyActivities = await prisma.agentActivity.findMany({
-      where: {
-        agentId,
-        mandateId: mandate.id,
-        createdAt: { gte: startOfDay },
-        amount: { not: null },
-      },
-    });
-    const dailyTotal = dailyActivities.reduce(
-      (sum, a) => sum + (a.amount ?? 0),
-      0,
-    );
-    if (dailyTotal + transaction.amount > mandate.maxDailyAmount) {
+    const totalAfter = mandate.spentCents + amountCents;
+    if (totalAfter > mandate.maxTotalSpendCents) {
       mandateViolations.push(
-        `Daily total ${dailyTotal + transaction.amount} exceeds daily limit ${mandate.maxDailyAmount}`,
+        `Total spend ${totalAfter / 100} would exceed budget ${mandate.maxTotalSpendCents / 100}`,
       );
     }
 
@@ -130,26 +117,11 @@ export async function validateTransaction(
       }
     }
 
-    const allowedOps: string[] = JSON.parse(mandate.allowedOperations);
+    const allowedOps: string[] = JSON.parse(mandate.allowedActions);
     if (allowedOps.length > 0) {
       if (!allowedOps.includes(transaction.operation)) {
         mandateViolations.push(
           `Operation "${transaction.operation}" not permitted`,
-        );
-      }
-    }
-
-    const allowedEndpoints: string[] = JSON.parse(mandate.allowedEndpoints);
-    if (allowedEndpoints.length > 0 && transaction.endpoint) {
-      const matches = allowedEndpoints.some((pattern) => {
-        const regex = new RegExp(
-          `^${pattern.replace(/\*/g, ".*")}$`,
-        );
-        return regex.test(transaction.endpoint!);
-      });
-      if (!matches) {
-        mandateViolations.push(
-          `Endpoint "${transaction.endpoint}" does not match allowed patterns`,
         );
       }
     }
@@ -167,16 +139,17 @@ export async function validateTransaction(
 export async function revokeMandate(mandateId: string) {
   return prisma.agentMandate.update({
     where: { id: mandateId },
-    data: { active: false, revokedAt: new Date() },
+    data: { status: "revoked" },
   });
 }
 
 export async function getActiveMandates(agentId: string) {
+  const now = new Date();
   return prisma.agentMandate.findMany({
     where: {
-      agentId,
-      active: true,
-      expiresAt: { gt: new Date() },
+      agentPassportId: agentId,
+      status: "active",
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
     },
     orderBy: { createdAt: "desc" },
   });

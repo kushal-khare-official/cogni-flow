@@ -1,5 +1,18 @@
 import { ExecutionContext } from "./context";
 
+/** Get a value from an object by dot-separated path (e.g. "body.id" from { body: { id: "x" } }). */
+export function getByPath(obj: Record<string, unknown>, path: string): unknown {
+  if (!path.trim()) return obj;
+  const parts = path.trim().split(".");
+  let current: unknown = obj;
+  for (const part of parts) {
+    if (current === null || current === undefined) return undefined;
+    if (typeof current !== "object" || Array.isArray(current)) return undefined;
+    current = (current as Record<string, unknown>)[part];
+  }
+  return current;
+}
+
 const EXPRESSION_PATTERN = /\{\{(.+?)\}\}/g;
 const SINGLE_EXPRESSION_PATTERN = /^\{\{(.+?)\}\}$/;
 
