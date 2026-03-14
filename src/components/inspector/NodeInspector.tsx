@@ -16,6 +16,8 @@ import {
   collectLoopBody,
   findLastStepInLoop,
 } from "@/lib/workflow/loop-utils";
+import { ExecutionContext } from "@/lib/execution/context";
+import { resolveExpression, resolveTemplate } from "@/lib/execution/expression";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -57,6 +59,7 @@ export function NodeInspector() {
     error?: string;
   } | null>(null);
   const [testToken, setTestToken] = useState("");
+  const [testInputJson, setTestInputJson] = useState("{}");
 
   const node = nodes.find((n) => n.id === selectedNodeId);
 
@@ -137,24 +140,61 @@ export function NodeInspector() {
       setTestResult({ status: 0, statusText: "", body: "", error: "Integration has no Base URL." });
       return;
     }
-    const path = (stepConfig.path as string)?.trim() ?? (base.defaultPath as string)?.trim() ?? "";
-    const url = path ? `${baseUrl.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}` : baseUrl;
-    const method = ((stepConfig.method as string) ?? (base.defaultMethod as string) ?? "GET").toUpperCase();
     setTestLoading(true);
     setTestResult(null);
     try {
+      // Build a minimal execution context so path/body templates resolve (e.g. {{node-1.name}}, {{name}})
+      let node1Data: Record<string, unknown> = {};
+      try {
+        const parsed = JSON.parse(testInputJson.trim() || "{}");
+        if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+          node1Data = parsed;
+        }
+      } catch {
+        // keep {}
+      }
+      const ctx = new ExecutionContext();
+      ctx.set("node-1", node1Data);
+
+      const inputMapping = (data.inputMapping ?? {}) as Record<string, string>;
+      const resolvedInputs: Record<string, unknown> = {};
+      for (const [key, expr] of Object.entries(inputMapping)) {
+        resolvedInputs[key] = resolveExpression(expr, ctx);
+      }
+      ctx.set("_inputs", resolvedInputs);
+
+      const pathTemplate = (stepConfig.path as string)?.trim() ?? (base.defaultPath as string)?.trim() ?? "";
+      const resolvedPath = pathTemplate ? String(resolveExpression(pathTemplate, ctx)) : "";
+      const baseUrlNorm = baseUrl.replace(/\/$/, "");
+      const url = resolvedPath
+        ? `${baseUrlNorm}${resolvedPath.startsWith("/") ? resolvedPath : `/${resolvedPath}`}`
+        : baseUrlNorm;
+
+      const method = ((stepConfig.method as string) ?? (base.defaultMethod as string) ?? "GET").toUpperCase();
+
       const headers: Record<string, string> = {};
       const defaultHeaders = base.defaultHeaders as Record<string, string> | undefined;
       if (defaultHeaders && typeof defaultHeaders === "object") Object.assign(headers, defaultHeaders);
       if ((base.authType as string) === "bearer" && testToken.trim()) {
         headers["Authorization"] = `Bearer ${testToken.trim()}`;
       }
+
       let body: string | undefined;
-      const bodyTemplate = stepConfig.bodyTemplate ?? base.defaultRequestBody;
+      const bodyTemplate = stepConfig.bodyTemplate ?? resolvedOperation?.bodyTemplate ?? base.defaultRequestBody;
       if (method !== "GET" && method !== "HEAD" && bodyTemplate !== undefined && bodyTemplate !== null) {
-        body = typeof bodyTemplate === "string" ? bodyTemplate : JSON.stringify(bodyTemplate);
+        let template = bodyTemplate;
+        if (typeof template === "string" && template.trim()) {
+          try {
+            template = JSON.parse(template) as Record<string, unknown>;
+          } catch {
+            // use as string, resolveTemplate will substitute {{...}} in it
+          }
+        }
+        const resolvedBody = resolveTemplate(template, ctx);
+        body = typeof resolvedBody === "string" ? resolvedBody : JSON.stringify(resolvedBody);
         if (!headers["Content-Type"]) headers["Content-Type"] = "application/json";
       }
+
       const res = await fetch(url, { method, headers, body });
       const text = await res.text();
       let parsed: string;
@@ -609,6 +649,18 @@ export function NodeInspector() {
                     <Separator />
                     <div className="space-y-2">
                       <Label className="text-xs font-semibold text-zinc-600">Test integration</Label>
+                      <div className="space-y-1">
+                        <Label className="text-[11px] text-zinc-500">Test input (JSON) — used to resolve {""}
+                          <code className="rounded bg-zinc-100 px-0.5 text-[10px]">{"{{node-1.*}}"}</code> and input mapping in path/body
+                        </Label>
+                        <Textarea
+                          value={testInputJson}
+                          onChange={(e) => setTestInputJson(e.target.value)}
+                          placeholder='{"name": "My Agent", "modelProvider": "openai"}'
+                          rows={2}
+                          className="resize-none font-mono text-xs"
+                        />
+                      </div>
                       {(integrationBaseConfig.authType as string) === "bearer" && (
                         <div className="space-y-1">
                           <Label className="text-[11px] text-zinc-500">Test token (optional, not saved)</Label>

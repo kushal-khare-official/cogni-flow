@@ -1,15 +1,16 @@
 import { createHash } from "crypto";
 
 /**
- * Generate a SHA-256 fingerprint for an agent (model + version + creator).
+ * Generate a SHA-256 fingerprint for an agent (name + model + version + creator).
  * Used as a unique, tamper-evident identity for the Digital Agent Passport.
  */
 export function generateFingerprint(
+  name: string,
   modelProvider: string,
   modelVersion: string,
   creatorName: string,
 ): string {
-  const payload = `${modelProvider}:${modelVersion}:${creatorName}`;
+  const payload = `${name}:${modelProvider}:${modelVersion}:${creatorName}`;
   return createHash("sha256").update(payload, "utf8").digest("hex");
 }
 
