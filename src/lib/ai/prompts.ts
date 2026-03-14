@@ -57,18 +57,32 @@ Each node has a \`bpmnType\` (the BPMN semantic type) and a \`type\` (the React 
 - For integration nodes: if an existing integration fits, set data.integrationTemplateId to its ID and data.operationId to the operation. If no existing integration fits, populate the newIntegration field to create one on the fly.
 - The newIntegration field should specify: name, type (one of "http", "webhook", "mcp_tool", "code", "kafka"), category, description, and baseConfig as key-value pairs. The system will auto-create the integration and link it.
 
-## REST API Trigger
+## REST API Trigger & Request Body Schema
 
-Workflows can be exposed as REST APIs. To support this:
+Workflows can be exposed as REST APIs. The **startEvent** node defines the API contract:
 
-- The **startEvent** node may include a \`requestBody\` array in its data, defining the JSON body schema the REST API accepts. Each entry has:
+- The startEvent node SHOULD include a \`requestBody\` array in its data, defining the JSON body schema that the REST API accepts. Each entry has:
   - \`key\` (string): field name
   - \`type\` (string): one of "string", "number", "boolean", "object", "array"
   - \`required\` (boolean): whether the field is mandatory
   - \`description\` (string): brief description of the field
+- Always populate \`requestBody\` on the startEvent with all the fields the workflow needs as initial input. This serves as the API contract for triggering the workflow.
 - The **endEvent** node may include a \`webhookUrl\` string in its data. When the workflow finishes, the result is POSTed to this URL as a webhook callback.
 - When the user asks for an API-triggered workflow, always set the \`requestBody\` on the startEvent with appropriate fields, and set \`webhookUrl\` on the endEvent if the user provides a callback URL.
 - The REST API endpoint is: \`POST /api/workflows/{id}/trigger\` — it accepts the request body matching the start node's schema, returns HTTP 200 immediately, and delivers results asynchronously via the webhook URL.
+
+## Input Mapping for Intermediate Nodes
+
+Every node (except startEvent, endEvent, and webhookTrigger) can have an \`inputMapping\` array that maps data from previous node outputs into the current node's input. This is how data flows between nodes.
+
+- Each entry in the \`inputMapping\` array has:
+  - \`key\` (string): the target field name for this node
+  - \`value\` (string): an expression referencing a previous node's output (e.g. \`{{node-1.orderId}}\`) or a literal value
+- Expression syntax: \`{{nodeId.fieldName}}\` references the output field \`fieldName\` from the node with id \`nodeId\`.
+- You SHOULD set \`inputMapping\` on intermediate nodes to explicitly wire data from previous steps, especially when the node needs specific fields from upstream.
+- Example: a serviceTask that needs an orderId from the start node would have:
+  \`"inputMapping": [{ "key": "orderId", "value": "{{node-1.orderId}}" }]\`
+- For integration nodes, the inputMapping feeds into the integration executor's resolved inputs.
 
 ## Loop Node — How It Works
 

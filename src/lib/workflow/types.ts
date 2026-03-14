@@ -59,9 +59,6 @@ export interface BpmnNodeData {
   inputMapping?: Record<string, string>;
   // Code-specific
   code?: string;
-  // Step I/O contract
-  expectedInputs?: { key: string; type: string; description?: string }[];
-  expectedOutputs?: { key: string; type: string; description?: string }[];
   // Task-specific
   threshold?: number;
   confidenceScore?: number;
