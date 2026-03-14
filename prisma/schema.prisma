@@ -43,7 +43,7 @@ model Integration {
   type             String   // "http" | "mcp_tool" | "code" | "webhook" | "kafka" | "stripe_agent"
   description      String   @default("")
   baseConfig       String   @default("{}")
-  operations       String   @default("[]") // optional: predefined operations (id, name, method, path, bodyTemplate, inputSchema)
+  operations       String   @default("[]")
   credentialSchema String   @default("[]")
   mockConfig       String   @default("{}")
   isBuiltIn        Boolean  @default(false)
@@ -117,7 +117,7 @@ model AgentPassport {
   modelVersion    String
   creatorName     String
   creatorVerified Boolean   @default(false)
-  status          String    @default("active") // "active" | "suspended" | "revoked"
+  status          String    @default("active")
   revokedReason   String?
   stripeKeyScope  String    @default("[]")
   authMethod      String    @default("api_key")
@@ -168,7 +168,7 @@ model AgentAuditLog {
 
 model AgenticCheckoutSession {
   id               String   @id @default(cuid())
-  status           String   @default("not_ready_for_payment") // not_ready_for_payment | ready_for_payment | completed | canceled | in_progress
+  status           String   @default("not_ready_for_payment")
   paymentIntentId  String?
   amount           Int      @default(0)
   currency         String   @default("usd")
