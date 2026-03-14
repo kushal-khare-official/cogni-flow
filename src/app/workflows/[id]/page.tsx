@@ -81,19 +81,12 @@ export default function WorkflowEditPage() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background">
         <p className="text-sm text-red-600">{error}</p>
-        <div className="flex gap-2">
-          <Link href="/workflows">
-            <Button variant="outline" size="sm" className="gap-1.5">
-              <ArrowLeft className="size-4" />
-              Back to list
-            </Button>
-          </Link>
-          <Link href="/">
-            <Button variant="ghost" size="sm">
-              Home
-            </Button>
-          </Link>
-        </div>
+        <Link href="/">
+          <Button variant="outline" size="sm" className="gap-1.5">
+            <ArrowLeft className="size-4" />
+            Back to list
+          </Button>
+        </Link>
       </div>
     );
   }
