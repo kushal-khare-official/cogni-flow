@@ -64,6 +64,30 @@ Each node has a \`bpmnType\` (the BPMN semantic type) and a \`type\` (the React 
 - **mcp_tool** — MCP Tool Call: invoke tools from a Model Context Protocol server
 - **code** — Custom Code Script: execute JavaScript or Python code inline
 - **kafka** — Kafka Topic Consumer: consume messages from a Kafka topic
+- **stripe_agent** — Stripe Agent Toolkit: execute Stripe API actions (payment intents, refunds, payment links, products) for agentic payment workflows
+
+## KYA (Know Your Agent) Templates
+
+Use these integration template IDs for agent onboarding and guardrails:
+- **tpl-kya-passport** — Agent identity: registerAgent, verifyPassport, getPassport, revokePassport
+- **tpl-kya-mandate** — Delegation: createMandate, validateAction, recordSpend
+- **tpl-kya-monitor** — Monitoring: checkAnomaly, logAudit, getAuditTrail
+
+## Stripe Agentic Payment Templates
+
+- **tpl-stripe** — Payments: createPaymentIntent, retrievePaymentIntent, listCustomers, createCharge, createRefund, createPaymentLink, createProduct, createPrice
+- **tpl-stripe-issuing** — Virtual Cards: createCardholder, createVirtualCard, getCard, cancelCard
+- **tpl-stripe-billing** — Billing: createMeterEvent, createSubscription, createInvoice, listInvoices
+- **tpl-stripe-agent-toolkit** — Agent Toolkit: createPaymentIntent, retrievePaymentIntent, createRefund, createPaymentLink, createProduct, createPrice, listCustomers, listPrices
+
+## Agentic Payment Workflow Composition
+
+When the user describes an agentic payment or KYA workflow, compose it as follows:
+1. Start with KYA nodes: verifyPassport (tpl-kya-passport) then validateAction (tpl-kya-mandate) to check mandate before payment.
+2. Then add Stripe action nodes: use tpl-stripe or tpl-stripe-agent-toolkit for the actual payment/refund/card operation.
+3. After the Stripe action: recordSpend (tpl-kya-mandate) then checkAnomaly (tpl-kya-monitor).
+4. Use an ExclusiveGateway after checkAnomaly to branch on the anomaly result: if anomalyScore >= 0.7 use revokePassport (tpl-kya-passport) then EndEvent (error); otherwise logAudit (tpl-kya-monitor) then EndEvent (success).
+5. For agent onboarding flows: registerAgent (tpl-kya-passport) -> createMandate (tpl-kya-mandate) -> optional Stripe test (e.g. listCustomers) -> logAudit (tpl-kya-monitor) -> EndEvent.
 
 - Provide a clear, concise label for every node.
 - Include a brief description for non-trivial nodes.`;

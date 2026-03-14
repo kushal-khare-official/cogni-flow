@@ -3,7 +3,7 @@ import { executeMock } from "./executors/mock-executor";
 import { executeCode } from "./executors/code-executor";
 import { ExecutionContext } from "./context";
 
-export type IntegrationType = "http" | "mcp_tool" | "code" | "webhook" | "kafka";
+export type IntegrationType = "http" | "mcp_tool" | "code" | "webhook" | "kafka" | "stripe_agent";
 export type ExecutionMode = "live" | "mock";
 
 interface MockConfig {
@@ -32,6 +32,11 @@ interface DispatchParams {
   };
   webhookPassthrough?: Record<string, unknown>;
   kafkaParams?: Record<string, unknown>;
+  stripeAgentParams?: {
+    apiKey: string;
+    operationId: string;
+    resolvedInputs: Record<string, unknown>;
+  };
   mockConfig?: MockConfig;
   operationId?: string;
 }
@@ -78,6 +83,14 @@ export async function dispatchExecutor(
 
     case "kafka": {
       return params.kafkaParams ?? { message: "Kafka consumer placeholder — connect a real Kafka client" };
+    }
+
+    case "stripe_agent": {
+      if (!params.stripeAgentParams) {
+        throw new Error("stripeAgentParams required for stripe_agent executor");
+      }
+      const { executeStripeAgent } = await import("./executors/stripe-agent-executor");
+      return executeStripeAgent(params.stripeAgentParams);
     }
 
     default:

@@ -1,0 +1,19 @@
+{
+  "name": "Agent Onboarding Flow",
+  "description": "Register an agent (KYA passport), create a mandate, test Stripe connection, log onboarding.",
+  "nodes": [
+    { "id": "node-1", "type": "startEventNode", "position": { "x": 250, "y": 50 }, "data": { "label": "Start", "bpmnType": "startEvent" } },
+    { "id": "node-2", "type": "integrationNode", "position": { "x": 250, "y": 200 }, "data": { "label": "Register Agent", "bpmnType": "integration", "integrationTemplateId": "tpl-kya-passport", "operationId": "registerAgent" } },
+    { "id": "node-3", "type": "integrationNode", "position": { "x": 250, "y": 350 }, "data": { "label": "Create Mandate", "bpmnType": "integration", "integrationTemplateId": "tpl-kya-mandate", "operationId": "createMandate" } },
+    { "id": "node-4", "type": "integrationNode", "position": { "x": 250, "y": 500 }, "data": { "label": "Test Stripe (List Customers)", "bpmnType": "integration", "integrationTemplateId": "tpl-stripe", "operationId": "listCustomers" } },
+    { "id": "node-5", "type": "integrationNode", "position": { "x": 250, "y": 650 }, "data": { "label": "Log Onboarding", "bpmnType": "integration", "integrationTemplateId": "tpl-kya-monitor", "operationId": "logAudit" } },
+    { "id": "node-6", "type": "endEventNode", "position": { "x": 250, "y": 800 }, "data": { "label": "End", "bpmnType": "endEvent" } }
+  ],
+  "edges": [
+    { "id": "e-node-1-node-2", "source": "node-1", "target": "node-2", "type": "conditional", "data": {} },
+    { "id": "e-node-2-node-3", "source": "node-2", "target": "node-3", "type": "conditional", "data": {} },
+    { "id": "e-node-3-node-4", "source": "node-3", "target": "node-4", "type": "conditional", "data": {} },
+    { "id": "e-node-4-node-5", "source": "node-4", "target": "node-5", "type": "conditional", "data": {} },
+    { "id": "e-node-5-node-6", "source": "node-5", "target": "node-6", "type": "conditional", "data": {} }
+  ]
+}

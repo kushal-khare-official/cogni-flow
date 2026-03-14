@@ -1,0 +1,23 @@
+{
+  "name": "Metered AI Billing Pipeline",
+  "description": "Verify agent, validate billing mandate, track token usage (meter event), record spend, generate invoice, log billing.",
+  "nodes": [
+    { "id": "node-1", "type": "startEventNode", "position": { "x": 250, "y": 50 }, "data": { "label": "Start", "bpmnType": "startEvent" } },
+    { "id": "node-2", "type": "integrationNode", "position": { "x": 250, "y": 200 }, "data": { "label": "Verify Agent", "bpmnType": "integration", "integrationTemplateId": "tpl-kya-passport", "operationId": "verifyPassport" } },
+    { "id": "node-3", "type": "integrationNode", "position": { "x": 250, "y": 350 }, "data": { "label": "Validate Billing Mandate", "bpmnType": "integration", "integrationTemplateId": "tpl-kya-mandate", "operationId": "validateAction" } },
+    { "id": "node-4", "type": "integrationNode", "position": { "x": 250, "y": 500 }, "data": { "label": "Track Token Usage", "bpmnType": "integration", "integrationTemplateId": "tpl-stripe-billing", "operationId": "createMeterEvent" } },
+    { "id": "node-5", "type": "integrationNode", "position": { "x": 250, "y": 650 }, "data": { "label": "Record Spend", "bpmnType": "integration", "integrationTemplateId": "tpl-kya-mandate", "operationId": "recordSpend" } },
+    { "id": "node-6", "type": "integrationNode", "position": { "x": 250, "y": 800 }, "data": { "label": "Generate Invoice", "bpmnType": "integration", "integrationTemplateId": "tpl-stripe-billing", "operationId": "createInvoice" } },
+    { "id": "node-7", "type": "integrationNode", "position": { "x": 250, "y": 950 }, "data": { "label": "Log Billing", "bpmnType": "integration", "integrationTemplateId": "tpl-kya-monitor", "operationId": "logAudit" } },
+    { "id": "node-8", "type": "endEventNode", "position": { "x": 250, "y": 1100 }, "data": { "label": "End", "bpmnType": "endEvent" } }
+  ],
+  "edges": [
+    { "id": "e-node-1-node-2", "source": "node-1", "target": "node-2", "type": "conditional", "data": {} },
+    { "id": "e-node-2-node-3", "source": "node-2", "target": "node-3", "type": "conditional", "data": {} },
+    { "id": "e-node-3-node-4", "source": "node-3", "target": "node-4", "type": "conditional", "data": {} },
+    { "id": "e-node-4-node-5", "source": "node-4", "target": "node-5", "type": "conditional", "data": {} },
+    { "id": "e-node-5-node-6", "source": "node-5", "target": "node-6", "type": "conditional", "data": {} },
+    { "id": "e-node-6-node-7", "source": "node-6", "target": "node-7", "type": "conditional", "data": {} },
+    { "id": "e-node-7-node-8", "source": "node-7", "target": "node-8", "type": "conditional", "data": {} }
+  ]
+}
