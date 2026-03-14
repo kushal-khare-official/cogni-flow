@@ -68,6 +68,10 @@ export interface BpmnNodeData {
   inputFeatures?: string[];
   // Webhook-specific
   webhookPath?: string;
+  // REST API trigger (start node)
+  requestBody?: { key: string; type: string; required?: boolean; description?: string }[];
+  // Webhook response (end node)
+  webhookUrl?: string;
   // Execution trace state
   executionStatus?: "idle" | "running" | "completed" | "error";
   executionInput?: unknown;

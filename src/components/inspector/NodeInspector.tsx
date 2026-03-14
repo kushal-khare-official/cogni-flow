@@ -201,6 +201,134 @@ export function NodeInspector() {
         />
       </div>
 
+      {/* Start Event — REST API request body schema */}
+      {data.bpmnType === BpmnNodeType.StartEvent && (
+        <>
+          <Separator />
+          <div className="space-y-3">
+            <Label className="text-xs font-semibold text-zinc-600">REST API Trigger</Label>
+            <p className="text-[10px] text-zinc-400">
+              Define the request body fields that the REST API expects when triggering this workflow.
+            </p>
+
+            <div className="space-y-2">
+              <Label className="text-xs text-zinc-500">Request Body Schema</Label>
+              {((data.requestBody ?? []) as { key: string; type: string; required?: boolean; description?: string }[]).map((field, idx) => (
+                <div key={idx} className="flex items-start gap-1.5">
+                  <Input
+                    value={field.key}
+                    onChange={(e) => {
+                      const current = [...(data.requestBody ?? [])];
+                      current[idx] = { ...current[idx], key: e.target.value };
+                      update({ requestBody: current });
+                    }}
+                    placeholder="field name"
+                    className="h-7 flex-1 text-xs"
+                  />
+                  <Select
+                    value={field.type}
+                    onValueChange={(v) => {
+                      const current = [...(data.requestBody ?? [])];
+                      current[idx] = { ...current[idx], type: v ?? "string" };
+                      update({ requestBody: current });
+                    }}
+                  >
+                    <SelectTrigger className="h-7 w-24 shrink-0 text-[10px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {IO_TYPES.map((t) => (
+                        <SelectItem key={t} value={t}>{t}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <label className="flex items-center gap-1 text-[10px] text-zinc-500">
+                    <input
+                      type="checkbox"
+                      checked={field.required ?? false}
+                      onChange={(e) => {
+                        const current = [...(data.requestBody ?? [])];
+                        current[idx] = { ...current[idx], required: e.target.checked };
+                        update({ requestBody: current });
+                      }}
+                      className="size-3"
+                    />
+                    Req
+                  </label>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => {
+                      const current = [...(data.requestBody ?? [])];
+                      current.splice(idx, 1);
+                      update({ requestBody: current });
+                    }}
+                    className="shrink-0 text-zinc-400 hover:text-red-500"
+                  >
+                    <X className="size-3" />
+                  </Button>
+                </div>
+              ))}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const current = (data.requestBody ?? []) as { key: string; type: string; required?: boolean; description?: string }[];
+                  update({ requestBody: [...current, { key: "", type: "string", required: false, description: "" }] });
+                }}
+                className="gap-1 text-[10px]"
+              >
+                <Plus className="size-3" /> Add Field
+              </Button>
+            </div>
+
+            {node.id && (
+              <div className="rounded-md border border-zinc-100 bg-zinc-50 p-2 text-[11px] text-zinc-500">
+                <p className="font-medium text-zinc-600">Trigger endpoint:</p>
+                <p className="mt-0.5 font-mono text-[10px]">POST /api/workflows/&#123;id&#125;/trigger</p>
+                <p className="mt-1 text-[10px] text-zinc-400">
+                  Publish the workflow and use the trigger endpoint to start it via REST API.
+                  Returns 200 immediately; results are delivered to the webhook URL configured on the End node.
+                </p>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* End Event — Webhook response URL */}
+      {data.bpmnType === BpmnNodeType.EndEvent && (
+        <>
+          <Separator />
+          <div className="space-y-3">
+            <Label className="text-xs font-semibold text-zinc-600">Webhook Response</Label>
+            <p className="text-[10px] text-zinc-400">
+              When the workflow completes, the result will be POSTed to this URL.
+            </p>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-zinc-500">Webhook URL</Label>
+              <Input
+                value={(data.webhookUrl as string) ?? ""}
+                onChange={(e) => update({ webhookUrl: e.target.value })}
+                placeholder="https://example.com/webhook/callback"
+                className="text-xs font-mono"
+              />
+            </div>
+            <div className="rounded-md border border-zinc-100 bg-zinc-50 p-2 text-[11px] text-zinc-500">
+              <p className="font-medium text-zinc-600">Response payload:</p>
+              <pre className="mt-1 whitespace-pre-wrap font-mono text-[10px] text-zinc-400">{`{
+  "runId": "...",
+  "workflowId": "...",
+  "status": "completed" | "failed",
+  "output": { ... },
+  "error": null | "...",
+  "completedAt": "..."
+}`}</pre>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* Gateway conditions */}
       {isGateway && outgoingEdges.length > 0 && (
         <>
