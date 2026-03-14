@@ -41,12 +41,6 @@ const NODE_TYPE_FILTER: Partial<Record<BpmnNodeType, string>> = {
 
 const IO_TYPES = ["string", "number", "boolean", "object", "array"] as const;
 
-interface IoField {
-  key: string;
-  type: string;
-  description?: string;
-}
-
 interface OperationDef {
   id: string;
   name: string;
@@ -120,8 +114,10 @@ export function NodeInspector() {
 
   const outgoingEdges = edges.filter((e) => e.source === node.id);
 
-  const expectedInputs = ((data.expectedInputs ?? []) as IoField[]);
-  const expectedOutputs = ((data.expectedOutputs ?? []) as IoField[]);
+  const isIntermediateNode =
+    data.bpmnType !== BpmnNodeType.StartEvent &&
+    data.bpmnType !== BpmnNodeType.EndEvent &&
+    data.bpmnType !== BpmnNodeType.WebhookTrigger;
 
   function update(patch: Partial<BpmnNodeData>) {
     if (selectedNodeId) updateNodeData(selectedNodeId, patch);
@@ -131,23 +127,6 @@ export function NodeInspector() {
     if (!selectedNodeId) return;
     deleteNode(selectedNodeId);
     selectNode(null);
-  }
-
-  function addIoField(direction: "expectedInputs" | "expectedOutputs") {
-    const current = (data[direction] ?? []) as IoField[];
-    update({ [direction]: [...current, { key: "", type: "string", description: "" }] });
-  }
-
-  function updateIoField(direction: "expectedInputs" | "expectedOutputs", idx: number, patch: Partial<IoField>) {
-    const current = [...(data[direction] ?? []) as IoField[]];
-    current[idx] = { ...current[idx], ...patch };
-    update({ [direction]: current });
-  }
-
-  function removeIoField(direction: "expectedInputs" | "expectedOutputs", idx: number) {
-    const current = [...(data[direction] ?? []) as IoField[]];
-    current.splice(idx, 1);
-    update({ [direction]: current });
   }
 
   return (
@@ -386,7 +365,6 @@ export function NodeInspector() {
                   update({
                     integrationTemplateId: val ?? undefined,
                     operationId: undefined,
-                    inputMapping: undefined,
                   })
                 }
               >
@@ -523,35 +501,52 @@ export function NodeInspector() {
             )}
           </div>
 
-          {/* Expected Inputs / Outputs */}
+        </>
+      )}
+
+      {/* Input Mapping — available for all intermediate nodes */}
+      {isIntermediateNode && (
+        <>
           <Separator />
           <div className="space-y-3">
-            <Label className="text-xs font-semibold text-zinc-600">Expected Inputs</Label>
-            {expectedInputs.map((field, idx) => (
-              <IoFieldRow
-                key={idx}
-                field={field}
-                onChange={(patch) => updateIoField("expectedInputs", idx, patch)}
-                onRemove={() => removeIoField("expectedInputs", idx)}
+            <Label className="text-xs font-semibold text-zinc-600">Input Mapping</Label>
+            <p className="text-[10px] text-zinc-400">
+              Map data from previous nodes into this node. Use expressions like{" "}
+              <code className="rounded bg-zinc-100 px-1 text-[9px]">{"{{node-1.fieldName}}"}</code>{" "}
+              to reference outputs from earlier nodes.
+            </p>
+            {Object.entries(data.inputMapping ?? {}).map(([key, value]) => (
+              <InputMappingRow
+                key={key}
+                fieldKey={key}
+                fieldValue={value}
+                onChange={(newKey, newValue) => {
+                  const current = { ...(data.inputMapping ?? {}) };
+                  if (newKey !== key) {
+                    delete current[key];
+                  }
+                  current[newKey] = newValue;
+                  update({ inputMapping: current });
+                }}
+                onRemove={() => {
+                  const current = { ...(data.inputMapping ?? {}) };
+                  delete current[key];
+                  update({ inputMapping: current });
+                }}
               />
             ))}
-            <Button variant="outline" size="sm" onClick={() => addIoField("expectedInputs")} className="gap-1 text-[10px]">
-              <Plus className="size-3" /> Add Input
-            </Button>
-          </div>
-
-          <div className="space-y-3">
-            <Label className="text-xs font-semibold text-zinc-600">Expected Outputs</Label>
-            {expectedOutputs.map((field, idx) => (
-              <IoFieldRow
-                key={idx}
-                field={field}
-                onChange={(patch) => updateIoField("expectedOutputs", idx, patch)}
-                onRemove={() => removeIoField("expectedOutputs", idx)}
-              />
-            ))}
-            <Button variant="outline" size="sm" onClick={() => addIoField("expectedOutputs")} className="gap-1 text-[10px]">
-              <Plus className="size-3" /> Add Output
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const current = { ...(data.inputMapping ?? {}) };
+                const newKey = `field_${Object.keys(current).length + 1}`;
+                current[newKey] = "";
+                update({ inputMapping: current });
+              }}
+              className="gap-1 text-[10px]"
+            >
+              <Plus className="size-3" /> Add Mapping
             </Button>
           </div>
         </>
@@ -662,38 +657,30 @@ export function NodeInspector() {
   );
 }
 
-function IoFieldRow({
-  field,
+function InputMappingRow({
+  fieldKey,
+  fieldValue,
   onChange,
   onRemove,
 }: {
-  field: IoField;
-  onChange: (patch: Partial<IoField>) => void;
+  fieldKey: string;
+  fieldValue: string;
+  onChange: (key: string, value: string) => void;
   onRemove: () => void;
 }) {
   return (
     <div className="flex items-start gap-1.5">
       <Input
-        value={field.key}
-        onChange={(e) => onChange({ key: e.target.value })}
-        placeholder="field name"
-        className="h-7 flex-1 text-xs"
+        value={fieldKey}
+        onChange={(e) => onChange(e.target.value, fieldValue)}
+        placeholder="key"
+        className="h-7 w-28 shrink-0 text-xs"
       />
-      <Select value={field.type} onValueChange={(v) => onChange({ type: v ?? "string" })}>
-        <SelectTrigger className="h-7 w-24 shrink-0 text-[10px]">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {IO_TYPES.map((t) => (
-            <SelectItem key={t} value={t}>{t}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
       <Input
-        value={field.description ?? ""}
-        onChange={(e) => onChange({ description: e.target.value })}
-        placeholder="description"
-        className="h-7 flex-1 text-xs"
+        value={fieldValue}
+        onChange={(e) => onChange(fieldKey, e.target.value)}
+        placeholder="{{node-1.field}} or literal"
+        className="h-7 flex-1 text-xs font-mono"
       />
       <Button variant="ghost" size="icon-sm" onClick={onRemove} className="shrink-0 text-zinc-400 hover:text-red-500">
         <X className="size-3" />
