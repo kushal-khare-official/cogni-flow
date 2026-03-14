@@ -86,6 +86,20 @@ export async function POST(request: NextRequest) {
           const key = node.data.newIntegration.name.toLowerCase().trim();
           tplId = createdTemplateIds.get(key) ?? tplId;
         }
+        const normalizedConfig = Array.isArray(node.data.config)
+          ? Object.fromEntries(
+              node.data.config
+                .filter(
+                  (entry): entry is { key: string; value: unknown } =>
+                    !!entry &&
+                    typeof entry === "object" &&
+                    "key" in entry &&
+                    "value" in entry &&
+                    typeof (entry as { key: unknown }).key === "string",
+                )
+                .map((entry) => [entry.key, entry.value]),
+            )
+          : node.data.config ?? undefined;
         const validTplId = tplId && templateIds.has(tplId) ? tplId : undefined;
         return {
           ...node,
@@ -93,9 +107,7 @@ export async function POST(request: NextRequest) {
             label: node.data.label,
             bpmnType: node.data.bpmnType,
             description: node.data.description ?? undefined,
-            config: node.data.config
-              ? Object.fromEntries(node.data.config.map((c) => [c.key, c.value]))
-              : undefined,
+            config: normalizedConfig,
             conditions: node.data.conditions ?? undefined,
             integrationTemplateId: validTplId,
             operationId: validTplId ? (node.data.operationId ?? undefined) : undefined,

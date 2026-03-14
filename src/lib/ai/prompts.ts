@@ -56,6 +56,19 @@ Each node has a \`bpmnType\` (the BPMN semantic type) and a \`type\` (the React 
 - Gateway nodes should include a \`conditions\` array in their data mapping each outgoing edgeId to its expression.
 - For integration nodes: if an existing integration fits, set data.integrationTemplateId to its ID and data.operationId to the operation. If no existing integration fits, populate the newIntegration field to create one on the fly.
 - The newIntegration field should specify: name, type (one of "http", "webhook", "mcp_tool", "code", "kafka"), category, description, and baseConfig as key-value pairs. The system will auto-create the integration and link it.
+- To expose the workflow as REST API:
+  - The startEvent node should include data.config.requestBodySchema as a JSON structure of expected request fields (example: { "amount": "number", "customerId": "string", "metadata?": { "source": "string" } }).
+  - At least one endEvent node should include data.config.responseWebhookUrl as the callback URL where final workflow result must be POSTed.
+
+## Loop Node Rules (Improved Loop)
+
+- Use a loop node only when true iteration is needed.
+- Every loop node MUST include data.config.maxIterations as a positive number.
+- A valid loop pattern must be:
+  1) loop node has one outgoing edge into loop body (label like "continue"),
+  2) last node of loop body has a back-edge to the same loop node,
+  3) loop node has an exit edge to the next non-loop step (label like "done" or "exit").
+- Do NOT model loops by connecting random downstream nodes back without a dedicated loop node.
 
 ## Integration Types
 
@@ -85,6 +98,7 @@ export const CHAT_SYSTEM_PROMPT = `You are a BPMN workflow assistant helping use
 4. When adding nodes, follow the same id pattern ("node-N") and position spacing rules (y += 150, x spacing of 250 for branches).
 5. When removing nodes, also suggest removing or re-routing affected edges.
 6. Include the patch in a fenced JSON code block labeled \`workflowPatch\` so the frontend can parse it.
+7. If you add or modify a loop node, keep the improved loop semantics: body edge from loop -> body, back-edge from body last step -> loop, and an explicit exit edge from loop -> next step, with \`data.config.maxIterations\`.
 
 ## Response Format
 

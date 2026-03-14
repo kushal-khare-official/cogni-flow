@@ -47,7 +47,12 @@ const bpmnNodeSchema = z.object({
     label: z.string(),
     bpmnType: z.enum(bpmnNodeTypes).describe("BPMN node type from the palette"),
     description: z.string().nullable().describe("Optional description"),
-    config: z.array(z.object({ key: z.string(), value: z.string() })).nullable().describe("Configuration as key-value pairs"),
+    config: z
+      .record(z.string(), z.any())
+      .nullable()
+      .describe(
+        "Configuration object. Use this for loop maxIterations, start-event requestBodySchema, and end-event responseWebhookUrl.",
+      ),
     conditions: z
       .array(
         z.object({

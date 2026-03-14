@@ -1,17 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import crypto from "crypto";
-
-interface NodeData {
-  bpmnType?: string;
-  integrationTemplateId?: string;
-  webhookPath?: string;
-  label?: string;
-}
-interface WorkflowNode {
-  id: string;
-  data: NodeData;
-}
+import type { BpmnNode } from "@/lib/workflow/types";
+import {
+  getStartRequestBodySchema,
+  getStopResponseWebhookUrl,
+} from "@/lib/workflow/rest-api";
 
 export async function POST(
   request: NextRequest,
@@ -44,9 +38,9 @@ export async function POST(
     }
 
     // Auto-provision webhook endpoints for nodes with webhook-type integrations
-    const nodes = JSON.parse(existing.nodes) as WorkflowNode[];
+    const nodes = JSON.parse(existing.nodes) as BpmnNode[];
     const webhookTemplateIds = new Set<string>();
-    const webhookNodes: WorkflowNode[] = [];
+    const webhookNodes: BpmnNode[] = [];
 
     for (const node of nodes) {
       if (node.data.integrationTemplateId) {
@@ -93,10 +87,19 @@ export async function POST(
       data: { status: mode },
     });
 
+    const parsedNodes = JSON.parse(workflow.nodes) as BpmnNode[];
+    const requestBodySchema = getStartRequestBodySchema(parsedNodes);
+    const responseWebhookUrl = getStopResponseWebhookUrl(parsedNodes);
+
     return NextResponse.json({
       ...workflow,
-      nodes: JSON.parse(workflow.nodes),
+      nodes: parsedNodes,
       edges: JSON.parse(workflow.edges),
+      restApi: {
+        startEndpoint: `/api/workflows/${id}/start`,
+        requestBodySchema: requestBodySchema ?? null,
+        responseWebhookUrl: responseWebhookUrl ?? null,
+      },
     });
   } catch (error) {
     console.error("[workflows/[id]/publish]", error);

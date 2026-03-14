@@ -122,9 +122,27 @@ export function NodeInspector() {
 
   const expectedInputs = ((data.expectedInputs ?? []) as IoField[]);
   const expectedOutputs = ((data.expectedOutputs ?? []) as IoField[]);
+  const nodeConfig =
+    data.config && typeof data.config === "object" && !Array.isArray(data.config)
+      ? (data.config as Record<string, unknown>)
+      : {};
+  const startRequestBodyStructure =
+    typeof nodeConfig.requestBodySchema === "string"
+      ? nodeConfig.requestBodySchema
+      : nodeConfig.requestBodySchema
+        ? JSON.stringify(nodeConfig.requestBodySchema, null, 2)
+        : "";
+  const endResponseWebhookUrl =
+    typeof nodeConfig.responseWebhookUrl === "string"
+      ? nodeConfig.responseWebhookUrl
+      : "";
 
   function update(patch: Partial<BpmnNodeData>) {
     if (selectedNodeId) updateNodeData(selectedNodeId, patch);
+  }
+
+  function updateConfig(patch: Record<string, unknown>) {
+    update({ config: { ...nodeConfig, ...patch } });
   }
 
   function handleDelete() {
@@ -200,6 +218,55 @@ export function NodeInspector() {
           className="resize-none text-sm"
         />
       </div>
+
+      {data.bpmnType === BpmnNodeType.StartEvent && (
+        <>
+          <Separator />
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold text-zinc-600">
+              REST API Request Body Structure
+            </Label>
+            <Textarea
+              value={startRequestBodyStructure}
+              onChange={(e) => updateConfig({ requestBodySchema: e.target.value })}
+              rows={6}
+              className="resize-none font-mono text-xs"
+              placeholder={`{
+  "customerId": "string",
+  "amount": "number",
+  "metadata?": {
+    "source": "string"
+  }
+}`}
+            />
+            <p className="text-[10px] text-zinc-400">
+              Optional. When provided, /api/workflows/&lt;workflowId&gt;/start
+              validates request bodies against this structure before execution.
+              Use a trailing <code>?</code> for optional keys.
+            </p>
+          </div>
+        </>
+      )}
+
+      {data.bpmnType === BpmnNodeType.EndEvent && (
+        <>
+          <Separator />
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-zinc-600">
+              Response Webhook URL
+            </Label>
+            <Input
+              value={endResponseWebhookUrl}
+              onChange={(e) => updateConfig({ responseWebhookUrl: e.target.value })}
+              placeholder="https://example.com/workflow-callback"
+              className="font-mono text-xs"
+            />
+            <p className="text-[10px] text-zinc-400">
+              Workflow result payload is POSTed here when execution completes.
+            </p>
+          </div>
+        </>
+      )}
 
       {/* Gateway conditions */}
       {isGateway && outgoingEdges.length > 0 && (
