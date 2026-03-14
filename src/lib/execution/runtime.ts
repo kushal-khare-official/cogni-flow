@@ -319,7 +319,16 @@ async function executeIntegrationNode(
   ctx.set("_inputs", resolvedInputs);
 
   const effectiveMode: ExecutionMode =
-    type === "webhook" ? "live" : mode;
+    type === "webhook" ? "live" : mode === "live" && credential ? "live" : "mock";
+
+  const stripeAgentParams =
+    type === "stripe_agent" && credential
+      ? {
+          apiKey: credential.apiKey ?? credential.secretKey ?? "",
+          operationId: operation?.id ?? operationId ?? "createPaymentIntent",
+          resolvedInputs,
+        }
+      : undefined;
 
   const language = (stepConfig.language ?? baseConfig.language ?? "javascript") as string;
 
@@ -355,6 +364,7 @@ async function executeIntegrationNode(
       groupId: baseConfig.groupId ?? resolvedInputs.groupId,
       ...resolvedInputs,
     } : undefined,
+    stripeAgentParams,
     mockConfig,
     operationId: "default",
   }, ctx);
