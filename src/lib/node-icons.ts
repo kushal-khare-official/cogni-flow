@@ -19,6 +19,9 @@ import {
   Mail,
   Eye,
   HardDrive,
+  ShieldCheck,
+  FileCheck,
+  Activity,
   type LucideIcon,
 } from "lucide-react";
 import { BpmnNodeType } from "@/lib/workflow/types";
@@ -49,6 +52,10 @@ export const NODE_ICONS: Record<BpmnNodeType, LucideIcon> = {
   [BpmnNodeType.SendEmail]: Mail,
   [BpmnNodeType.HumanReview]: Eye,
   [BpmnNodeType.UpdateDB]: HardDrive,
+
+  [BpmnNodeType.AgentGate]: ShieldCheck,
+  [BpmnNodeType.MandateCheck]: FileCheck,
+  [BpmnNodeType.BehaviorAudit]: Activity,
 };
 
 export function getNodeIcon(type: BpmnNodeType): LucideIcon {

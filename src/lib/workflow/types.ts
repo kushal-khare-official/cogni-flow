@@ -32,6 +32,11 @@ export enum BpmnNodeType {
   SendEmail = "sendEmail",
   HumanReview = "humanReview",
   UpdateDB = "updateDB",
+
+  // KYA (Know Your Agent)
+  AgentGate = "agentGate",
+  MandateCheck = "mandateCheck",
+  BehaviorAudit = "behaviorAudit",
 }
 
 export type PaletteCategory =
@@ -136,7 +141,7 @@ export const NODE_TYPE_CATEGORIES: Record<PaletteCategory, BpmnNodeType[]> = {
     BpmnNodeType.InclusiveGateway,
   ],
   integrations: [BpmnNodeType.WebhookTrigger],
-  logic: [BpmnNodeType.Loop, BpmnNodeType.Wait, BpmnNodeType.SplitPath],
+  logic: [BpmnNodeType.Loop, BpmnNodeType.Wait, BpmnNodeType.SplitPath, BpmnNodeType.AgentGate, BpmnNodeType.MandateCheck, BpmnNodeType.BehaviorAudit],
   actions: [
     BpmnNodeType.SendEmail,
     BpmnNodeType.HumanReview,
@@ -165,6 +170,9 @@ export const NODE_TYPE_LABELS: Record<BpmnNodeType, string> = {
   [BpmnNodeType.SendEmail]: "Send Email",
   [BpmnNodeType.HumanReview]: "Human Review",
   [BpmnNodeType.UpdateDB]: "Update DB",
+  [BpmnNodeType.AgentGate]: "Agent Gate",
+  [BpmnNodeType.MandateCheck]: "Mandate Check",
+  [BpmnNodeType.BehaviorAudit]: "Behavior Audit",
 };
 
 export const CATEGORY_LABELS: Record<PaletteCategory, string> = {
