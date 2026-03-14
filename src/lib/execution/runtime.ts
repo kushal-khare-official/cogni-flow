@@ -66,8 +66,10 @@ export async function executeWorkflow(
 
     callbacks?.onNodeStart?.(currentNodeId);
 
+    const isStartOrWebhook =
+      bpmnType === BpmnNodeType.StartEvent || bpmnType === BpmnNodeType.WebhookTrigger;
     try {
-      if (bpmnType === BpmnNodeType.StartEvent || bpmnType === BpmnNodeType.WebhookTrigger) {
+      if (isStartOrWebhook) {
         output = { ...input };
       } else if (bpmnType === BpmnNodeType.EndEvent) {
         output = gatherInputs(currentNodeId, edges, ctx);
@@ -103,12 +105,15 @@ export async function executeWorkflow(
         decision = continuing
           ? `Iteration ${iteration} — continuing`
           : `Iteration ${iteration} — loop finished`;
-      } else {
+      } else if (!isStartOrWebhook) {
         const nodeInput = gatherInputs(currentNodeId, edges, ctx);
         output = { ...nodeInput, [`${node.data.label}_processed`]: true };
       }
 
       ctx.set(currentNodeId, output);
+      if (isStartOrWebhook) {
+        ctx.set("node-1", output as Record<string, unknown>);
+      }
       callbacks?.onNodeComplete?.(currentNodeId, output);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
