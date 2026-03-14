@@ -115,13 +115,6 @@ export function Header() {
               CogniFlow
             </Link>
             <Separator orientation="vertical" className="!h-5 bg-zinc-700" />
-            <Link
-              href="/workflows"
-              className="text-xs text-zinc-400 transition-colors hover:text-white"
-            >
-              Workflows
-            </Link>
-            <Separator orientation="vertical" className="!h-5 bg-zinc-700" />
             <input
               type="text"
               value={name}

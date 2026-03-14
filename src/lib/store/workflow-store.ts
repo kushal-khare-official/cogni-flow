@@ -84,6 +84,7 @@ interface WorkflowStore {
   redo: () => void;
   pushHistory: () => void;
   clearWorkflow: () => void;
+  resetForNewWorkflow: () => void;
 }
 
 export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
@@ -220,4 +221,17 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
       selectedNodeId: null,
     });
   },
+
+  resetForNewWorkflow: () =>
+    set({
+      id: null,
+      name: "Untitled Workflow",
+      description: "",
+      status: "draft",
+      nodes: [],
+      edges: [],
+      selectedNodeId: null,
+      history: [],
+      historyIndex: -1,
+    }),
 }));
