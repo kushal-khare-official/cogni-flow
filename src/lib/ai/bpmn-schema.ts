@@ -6,7 +6,6 @@ const reactFlowNodeTypes = [
   "eventNode",
   "taskNode",
   "gatewayNode",
-  "integrationNode",
   "webhookTriggerNode",
   "logicNode",
   "actionNode",
@@ -26,7 +25,6 @@ const bpmnNodeTypes = [
   "exclusiveGateway",
   "parallelGateway",
   "inclusiveGateway",
-  "integration",
   "webhookTrigger",
   "loop",
   "wait",
@@ -46,8 +44,9 @@ const bpmnNodeSchema = z.object({
   data: z.object({
     label: z.string(),
     bpmnType: z.enum(bpmnNodeTypes).describe("BPMN node type from the palette"),
-    description: z.string().nullable().describe("Optional description"),
-    config: z.array(z.object({ key: z.string(), value: z.string() })).nullable().describe("Configuration as key-value pairs"),
+    stepName: z.string().describe("Human-readable step name for mapping; use empty string to use label."),
+    description: z.string().describe("Optional description; use empty string if none"),
+    config: z.array(z.object({ key: z.string(), value: z.string() })).describe("Configuration key-value pairs; use empty array if none"),
     conditions: z
       .array(
         z.object({
@@ -55,28 +54,39 @@ const bpmnNodeSchema = z.object({
           expression: z.string(),
         }),
       )
-      .nullable()
-      .describe("Gateway condition mappings for outgoing edges"),
-    integrationTemplateId: z.string().nullable().describe("Existing integration ID, or null if creating a new one via newIntegration"),
-    operationId: z.string().nullable().describe("Operation ID from the integration"),
+      .describe("Gateway condition mappings; use empty array if not a gateway"),
+    integrationId: z.string().describe("Integration ID for serviceTask; use empty string if none"),
+    stepConfig: z.object({
+      method: z.string().describe("HTTP method; use empty string if not HTTP"),
+      path: z.string().describe("Path; use empty string if not HTTP"),
+      bodyTemplate: z.string().describe("Request body as JSON string; use empty string if none"),
+      toolName: z.string().describe("MCP tool name; use empty string if not MCP"),
+      code: z.string().describe("Code for code steps; use empty string if not code"),
+      language: z.string().describe("Language for code; use empty string if not code"),
+    }).describe("Per-step config; use empty strings for unused fields. Required on every node."),
     newIntegration: z.object({
-      name: z.string().describe("Name for the new integration"),
+      name: z.string().describe("Name for new integration; use empty string if using existing integration"),
       type: z.enum(["http", "webhook", "mcp_tool", "code", "kafka"]).describe("Integration type"),
       category: z.string().describe("Category label, e.g. api, messaging, ai, code, custom"),
       description: z.string().describe("Brief description of what this integration does"),
       baseConfig: z.array(z.object({ key: z.string(), value: z.string() })).describe("Base configuration key-value pairs (e.g. baseUrl, brokers, topic)"),
-    }).nullable().describe("Define a new integration if no existing one fits"),
+    }).describe("New integration to create; set name to empty string if no new integration needed"),
+    outputSchema: z.array(z.object({
+      key: z.string().describe("Output field name this step produces"),
+      type: z.string().describe("Field type, e.g. string, number, object; use empty string if omitted"),
+      description: z.string().describe("Brief description of the field; use empty string if omitted"),
+    })).describe("Output fields this step produces for downstream mapping; use empty array if none."),
     inputMapping: z.array(z.object({
       key: z.string().describe("Target field name for this node"),
       value: z.string().describe("Expression referencing a previous node output, e.g. {{node-1.fieldName}}, or a literal value"),
-    })).nullable().describe("Input mapping for intermediate nodes — maps data from previous node outputs into this node"),
+    })).describe("Input mapping; use empty array if none"),
     requestBody: z.array(z.object({
       key: z.string().describe("Field name"),
       type: z.enum(["string", "number", "boolean", "object", "array"]).describe("Field type"),
       required: z.boolean().describe("Whether the field is required"),
       description: z.string().describe("Brief description of the field"),
-    })).nullable().describe("REST API request body schema (startEvent only)"),
-    webhookUrl: z.string().nullable().describe("URL to POST workflow results to when complete (endEvent only)"),
+    })).describe("REST API request body schema (startEvent only); use empty array if not startEvent"),
+    webhookUrl: z.string().describe("URL to POST workflow results (endEvent only); use empty string if not endEvent"),
   }),
 });
 

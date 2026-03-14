@@ -86,7 +86,7 @@ export async function executeWorkflow(
         }
 
         break;
-      } else if (node.data.integrationTemplateId) {
+      } else if (node.data.integrationId) {
         output = await executeIntegrationNode(node, ctx, mode);
       } else if (GATEWAY_TYPES.has(bpmnType)) {
         const nodeInput = gatherInputs(currentNodeId, edges, ctx);
@@ -119,7 +119,7 @@ export async function executeWorkflow(
         for (let r = 0; r < retryCount; r++) {
           try {
             await new Promise((res) => setTimeout(res, 1000 * (r + 1)));
-            if (node.data.integrationTemplateId) {
+            if (node.data.integrationId) {
               output = await executeIntegrationNode(node, ctx, mode);
             }
             ctx.set(currentNodeId, output);
@@ -257,52 +257,37 @@ async function executeIntegrationNode(
   ctx: ExecutionContext,
   mode: ExecutionMode,
 ): Promise<Record<string, unknown>> {
-  const { integrationTemplateId, operationId, credentialId, inputMapping } = node.data;
-  if (!integrationTemplateId) {
-    throw new Error("Integration node missing template ID");
+  const { integrationId, credentialId, inputMapping, stepConfig: rawStepConfig } = node.data;
+  if (!integrationId) {
+    throw new Error("Service task missing integration ID");
   }
 
-  const template = await prisma.integrationTemplate.findUnique({
-    where: { id: integrationTemplateId },
+  const integration = await prisma.integration.findUnique({
+    where: { id: integrationId },
   });
-  if (!template) {
-    throw new Error(`Integration template not found: ${integrationTemplateId}`);
+  if (!integration) {
+    throw new Error(`Integration not found: ${integrationId}`);
   }
 
-  const baseConfig = JSON.parse(template.baseConfig);
-  const operations = JSON.parse(template.operations) as Array<{
-    id: string; method?: string; path?: string;
-    bodyTemplate?: unknown; queryTemplate?: Record<string, string>;
-    headersOverride?: Record<string, string>; toolName?: string; codeTemplate?: string;
-    inputSchema?: Array<{ key: string; default?: unknown }>;
-  }>;
-  const mockConfig = JSON.parse(template.mockConfig);
-  const type = template.type as IntegrationType;
+  const baseConfig = JSON.parse(integration.baseConfig);
+  const mockConfig = JSON.parse(integration.mockConfig);
+  const type = integration.type as IntegrationType;
 
-  let operation = operationId
-    ? operations.find((o) => o.id === operationId) ?? operations[0]
-    : operations[0];
-
-  // Apply per-node config overrides (set in the inspector)
+  // Build operation-like shape from node stepConfig (and legacy config overrides)
   const nodeConfig = (node.data.config ?? {}) as Record<string, unknown>;
-  if (operation && type === "http") {
-    operation = { ...operation };
-    if (nodeConfig.methodOverride) operation.method = nodeConfig.methodOverride as string;
-    if (nodeConfig.pathOverride) operation.path = nodeConfig.pathOverride as string;
-    if (nodeConfig.headersOverride) {
-      try {
-        operation.headersOverride = JSON.parse(nodeConfig.headersOverride as string);
-      } catch { /* ignore bad JSON */ }
-    }
-    if (nodeConfig.bodyOverride) {
-      try {
-        operation.bodyTemplate = JSON.parse(nodeConfig.bodyOverride as string);
-      } catch { /* ignore bad JSON */ }
-    }
-  }
-  if (operation && type === "mcp_tool" && nodeConfig.toolName) {
-    operation = { ...operation, toolName: nodeConfig.toolName as string };
-  }
+  const stepConfig = (rawStepConfig ?? {}) as Record<string, unknown>;
+
+  const operation = {
+    id: "default",
+    method: (stepConfig.method ?? nodeConfig.methodOverride ?? "GET") as string,
+    path: (stepConfig.path ?? nodeConfig.pathOverride ?? "/") as string,
+    bodyTemplate: stepConfig.bodyTemplate ?? (nodeConfig.bodyOverride ? (typeof nodeConfig.bodyOverride === "string" ? (() => { try { return JSON.parse(nodeConfig.bodyOverride as string); } catch { return undefined; } })() : nodeConfig.bodyOverride) : undefined),
+    queryTemplate: stepConfig.queryTemplate as Record<string, string> | undefined,
+    headersOverride: (stepConfig.headersOverride ?? (nodeConfig.headersOverride ? (typeof nodeConfig.headersOverride === "string" ? (() => { try { return JSON.parse(nodeConfig.headersOverride as string); } catch { return undefined; } })() : nodeConfig.headersOverride) : undefined)) as Record<string, string> | undefined,
+    toolName: (stepConfig.toolName ?? nodeConfig.toolName ?? "") as string,
+    codeTemplate: (stepConfig.code ?? node.data.code) as string | undefined,
+    inputSchema: (stepConfig.inputSchema ?? []) as Array<{ key: string; default?: unknown }>,
+  };
 
   let credential: Record<string, string> | null = null;
   if (credentialId && mode === "live") {
@@ -320,8 +305,7 @@ async function executeIntegrationNode(
       resolvedInputs[key] = resolveExpression(expr, ctx);
     }
   }
-  // Fill defaults from operation schema
-  if (operation?.inputSchema) {
+  if (operation.inputSchema?.length) {
     for (const field of operation.inputSchema) {
       if (resolvedInputs[field.key] === undefined && field.default !== undefined) {
         resolvedInputs[field.key] = field.default;
@@ -329,15 +313,15 @@ async function executeIntegrationNode(
     }
   }
 
-  // Merge credential values into context for template resolution
   if (credential) {
     ctx.set("credential", credential);
   }
-  // Also merge resolved inputs into a temp context node
   ctx.set("_inputs", resolvedInputs);
 
   const effectiveMode: ExecutionMode =
     type === "webhook" ? "live" : mode;
+
+  const language = (stepConfig.language ?? baseConfig.language ?? "javascript") as string;
 
   return dispatchExecutor(type, effectiveMode, {
     webhookPassthrough: type === "webhook"
@@ -345,7 +329,7 @@ async function executeIntegrationNode(
       : undefined,
     httpParams: type === "http" ? {
       template: { baseConfig },
-      operation: operation ?? { id: "default" },
+      operation,
       resolvedInputs,
       credential,
     } : undefined,
@@ -357,13 +341,13 @@ async function executeIntegrationNode(
         url: baseConfig.url,
         env: baseConfig.env,
       },
-      toolName: operation?.toolName ?? operationId ?? "",
+      toolName: operation.toolName || "default",
       arguments: resolvedInputs,
     } : undefined,
     codeParams: type === "code" ? {
-      code: operation?.codeTemplate ?? (node.data.code as string) ?? "",
+      code: operation.codeTemplate ?? "",
       ctx: ctx.toJSON(),
-      language: baseConfig.language ?? "javascript",
+      language,
     } : undefined,
     kafkaParams: type === "kafka" ? {
       brokers: baseConfig.brokers,
@@ -372,6 +356,6 @@ async function executeIntegrationNode(
       ...resolvedInputs,
     } : undefined,
     mockConfig,
-    operationId: operation?.id,
+    operationId: "default",
   }, ctx);
 }

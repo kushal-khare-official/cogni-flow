@@ -20,9 +20,6 @@ export enum BpmnNodeType {
   ParallelGateway = "parallelGateway",
   InclusiveGateway = "inclusiveGateway",
 
-  // Integration (data-driven, references an integration record in DB)
-  Integration = "integration",
-
   // Triggers
   WebhookTrigger = "webhookTrigger",
 
@@ -48,15 +45,17 @@ export type PaletteCategory =
 export interface BpmnNodeData {
   label: string;
   bpmnType: BpmnNodeType;
+  stepName?: string;
   description?: string;
   config?: Record<string, unknown>;
   // Gateway-specific
   conditions?: { edgeId: string; expression: string }[];
-  // Integration-specific (data-driven, references DB templates)
-  integrationTemplateId?: string;
-  operationId?: string;
+  // Service Task with integration (references Integration record)
+  integrationId?: string;
+  stepConfig?: Record<string, unknown>;
   credentialId?: string;
   inputMapping?: Record<string, string>;
+  outputSchema?: { key: string; type?: string; description?: string }[];
   // Code-specific
   code?: string;
   // Task-specific
@@ -135,10 +134,7 @@ export const NODE_TYPE_CATEGORIES: Record<PaletteCategory, BpmnNodeType[]> = {
     BpmnNodeType.ParallelGateway,
     BpmnNodeType.InclusiveGateway,
   ],
-  integrations: [
-    BpmnNodeType.Integration,
-    BpmnNodeType.WebhookTrigger,
-  ],
+  integrations: [BpmnNodeType.WebhookTrigger],
   logic: [BpmnNodeType.Loop, BpmnNodeType.Wait, BpmnNodeType.SplitPath],
   actions: [
     BpmnNodeType.SendEmail,
@@ -161,7 +157,6 @@ export const NODE_TYPE_LABELS: Record<BpmnNodeType, string> = {
   [BpmnNodeType.ExclusiveGateway]: "Exclusive Gateway",
   [BpmnNodeType.ParallelGateway]: "Parallel Gateway",
   [BpmnNodeType.InclusiveGateway]: "Inclusive Gateway",
-  [BpmnNodeType.Integration]: "Integration",
   [BpmnNodeType.WebhookTrigger]: "Webhook Trigger",
   [BpmnNodeType.Loop]: "Loop",
   [BpmnNodeType.Wait]: "Wait",
@@ -198,10 +193,7 @@ export function getReactFlowNodeType(bpmnType: BpmnNodeType): string {
           : "eventNode",
     tasks: "taskNode",
     gateways: "gatewayNode",
-    integrations:
-      bpmnType === BpmnNodeType.WebhookTrigger
-        ? "webhookTriggerNode"
-        : "integrationNode",
+    integrations: "webhookTriggerNode",
     logic: "logicNode",
     actions: "actionNode",
   };

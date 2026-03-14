@@ -8,7 +8,6 @@ export interface IntegrationRecord {
   type: string;
   description: string;
   baseConfig: string;
-  operations: string;
   credentialSchema: string;
   mockConfig: string;
   isBuiltIn: boolean;
