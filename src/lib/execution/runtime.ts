@@ -280,7 +280,7 @@ async function executeIntegrationNode(
   const operation = {
     id: "default",
     method: (stepConfig.method ?? nodeConfig.methodOverride ?? "GET") as string,
-    path: (stepConfig.path ?? nodeConfig.pathOverride ?? "/") as string,
+    path: (stepConfig.path ?? nodeConfig.pathOverride ?? (baseConfig.defaultPath as string | undefined) ?? "") as string,
     bodyTemplate: stepConfig.bodyTemplate ?? (nodeConfig.bodyOverride ? (typeof nodeConfig.bodyOverride === "string" ? (() => { try { return JSON.parse(nodeConfig.bodyOverride as string); } catch { return undefined; } })() : nodeConfig.bodyOverride) : undefined),
     queryTemplate: stepConfig.queryTemplate as Record<string, string> | undefined,
     headersOverride: (stepConfig.headersOverride ?? (nodeConfig.headersOverride ? (typeof nodeConfig.headersOverride === "string" ? (() => { try { return JSON.parse(nodeConfig.headersOverride as string); } catch { return undefined; } })() : nodeConfig.headersOverride) : undefined)) as Record<string, string> | undefined,
