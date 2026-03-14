@@ -57,6 +57,57 @@ Each node has a \`bpmnType\` (the BPMN semantic type) and a \`type\` (the React 
 - For integration nodes: if an existing integration fits, set data.integrationTemplateId to its ID and data.operationId to the operation. If no existing integration fits, populate the newIntegration field to create one on the fly.
 - The newIntegration field should specify: name, type (one of "http", "webhook", "mcp_tool", "code", "kafka"), category, description, and baseConfig as key-value pairs. The system will auto-create the integration and link it.
 
+## REST API Trigger
+
+Workflows can be exposed as REST APIs. To support this:
+
+- The **startEvent** node may include a \`requestBody\` array in its data, defining the JSON body schema the REST API accepts. Each entry has:
+  - \`key\` (string): field name
+  - \`type\` (string): one of "string", "number", "boolean", "object", "array"
+  - \`required\` (boolean): whether the field is mandatory
+  - \`description\` (string): brief description of the field
+- The **endEvent** node may include a \`webhookUrl\` string in its data. When the workflow finishes, the result is POSTed to this URL as a webhook callback.
+- When the user asks for an API-triggered workflow, always set the \`requestBody\` on the startEvent with appropriate fields, and set \`webhookUrl\` on the endEvent if the user provides a callback URL.
+- The REST API endpoint is: \`POST /api/workflows/{id}/trigger\` — it accepts the request body matching the start node's schema, returns HTTP 200 immediately, and delivers results asynchronously via the webhook URL.
+
+## Loop Node — How It Works
+
+The \`loop\` node (logicNode) implements iteration. It requires a specific graph structure to work correctly:
+
+### Loop Structure
+
+A loop node MUST have exactly TWO outgoing edges:
+1. **Body edge** — leads into the loop body (the nodes to execute on each iteration).
+2. **Exit edge** — leads to the node after the loop (taken when the loop terminates).
+
+The last node in the loop body MUST have an edge pointing BACK to the loop node (a "back-edge"). This creates the cycle that enables iteration.
+
+### Example Loop Layout
+
+\`\`\`
+[Start] → [Loop Node] → [Body Step 1] → [Body Step 2] → (back to Loop Node)
+                ↓ (exit edge)
+           [Next Node After Loop] → [End]
+\`\`\`
+
+In terms of edges:
+- \`loop-node → body-step-1\` (body entry)
+- \`body-step-1 → body-step-2\`
+- \`body-step-2 → loop-node\` (back-edge — this is critical!)
+- \`loop-node → next-node\` (exit edge)
+
+### Loop Configuration
+
+- Set \`config\` with \`maxIterations\` (key-value pair) to control how many times the loop repeats. Default is 10.
+- The loop automatically tracks iterations and stops when \`maxIterations\` is reached.
+
+### Important Loop Rules
+
+1. The back-edge from the last body node to the loop node is REQUIRED. Without it, the loop will not iterate.
+2. The exit edge from the loop node to the post-loop node is REQUIRED. Without it, the loop has no way to terminate.
+3. Keep the loop body as a simple linear chain for best results. Avoid putting gateways inside loops.
+4. Place the body entry edge BEFORE the exit edge in the edges array to ensure correct detection.
+
 ## Integration Types
 
 - **http** — REST API: call any HTTP/REST endpoint (GET, POST, PUT, PATCH, DELETE)
