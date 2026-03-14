@@ -1,0 +1,143 @@
+{
+  "name": "Virtual Card Budget Agent",
+  "description": "Verify agent, validate budget, create cardholder and virtual card, record spend, check anomaly, then cancel card or log success.",
+  "nodes": [
+    { "id": "node-1", "type": "startEventNode", "position": { "x": 250, "y": 50 }, "data": { "label": "Start", "bpmnType": "startEvent", "requestBody": [{ "key": "passportId", "type": "string", "required": true, "description": "KYA passport ID" }, { "key": "mandateId", "type": "string", "required": true, "description": "Budget mandate ID" }] } },
+    {
+      "id": "node-2",
+      "type": "integrationNode",
+      "position": { "x": 250, "y": 200 },
+      "data": {
+        "label": "Verify Agent",
+        "bpmnType": "integration",
+        "integrationTemplateId": "tpl-kya-passport",
+        "operationId": "verifyPassport",
+        "inputMapping": { "passportId": "{{node-1.passportId}}" },
+        "outputMapping": { "valid": "body.valid", "status": "body.status" },
+        "outputSchema": [{ "key": "valid", "type": "boolean" }, { "key": "status", "type": "string" }],
+        "stepConfig": { "method": "POST", "path": "/{{passportId}}/verify" }
+      }
+    },
+    {
+      "id": "node-3",
+      "type": "integrationNode",
+      "position": { "x": 250, "y": 350 },
+      "data": {
+        "label": "Validate Budget",
+        "bpmnType": "integration",
+        "integrationTemplateId": "tpl-kya-mandate",
+        "operationId": "validateAction",
+        "inputMapping": { "mandateId": "{{node-1.mandateId}}", "action": "create_card", "amountCents": "0" },
+        "outputMapping": { "allowed": "body.allowed", "remaining": "body.remaining" },
+        "outputSchema": [{ "key": "allowed", "type": "boolean" }, { "key": "remaining", "type": "number" }],
+        "stepConfig": { "method": "POST", "path": "/mandates/{{mandateId}}/validate", "bodyTemplate": { "action": "{{action}}", "amountCents": "{{amountCents}}" } }
+      }
+    },
+    {
+      "id": "node-4",
+      "type": "integrationNode",
+      "position": { "x": 250, "y": 500 },
+      "data": {
+        "label": "Create Cardholder",
+        "bpmnType": "integration",
+        "integrationTemplateId": "tpl-stripe-issuing",
+        "operationId": "createCardholder",
+        "inputMapping": { "name": "Demo Cardholder", "line1": "123 Main St", "country": "US" },
+        "outputMapping": { "id": "body.id", "name": "body.name" },
+        "outputSchema": [{ "key": "id", "type": "string" }, { "key": "name", "type": "string" }],
+        "stepConfig": { "method": "POST", "path": "/issuing/cardholders", "bodyTemplate": { "name": "{{name}}", "type": "individual", "billing[address][line1]": "{{line1}}", "billing[address][country]": "{{country}}" } }
+      }
+    },
+    {
+      "id": "node-5",
+      "type": "integrationNode",
+      "position": { "x": 250, "y": 650 },
+      "data": {
+        "label": "Issue Virtual Card",
+        "bpmnType": "integration",
+        "integrationTemplateId": "tpl-stripe-issuing",
+        "operationId": "createVirtualCard",
+        "inputMapping": { "cardholder": "{{node-4.id}}" },
+        "outputMapping": { "id": "body.id", "last4": "body.last4", "status": "body.status" },
+        "outputSchema": [{ "key": "id", "type": "string" }, { "key": "last4", "type": "string" }, { "key": "status", "type": "string" }],
+        "stepConfig": { "method": "POST", "path": "/issuing/cards", "bodyTemplate": { "cardholder": "{{cardholder}}", "type": "virtual" } }
+      }
+    },
+    {
+      "id": "node-6",
+      "type": "integrationNode",
+      "position": { "x": 250, "y": 800 },
+      "data": {
+        "label": "Record Card Spend",
+        "bpmnType": "integration",
+        "integrationTemplateId": "tpl-kya-mandate",
+        "operationId": "recordSpend",
+        "inputMapping": { "mandateId": "{{node-1.mandateId}}", "amountCents": "500", "action": "card_spend", "stripeObjectId": "{{node-5.id}}" },
+        "outputMapping": { "spentCents": "body.spentCents", "remaining": "body.remaining", "status": "body.status" },
+        "outputSchema": [{ "key": "spentCents", "type": "number" }, { "key": "remaining", "type": "number" }, { "key": "status", "type": "string" }],
+        "stepConfig": { "method": "POST", "path": "/mandates/{{mandateId}}/spend", "bodyTemplate": { "amountCents": "{{amountCents}}", "action": "{{action}}", "stripeObjectId": "{{stripeObjectId}}" } }
+      }
+    },
+    {
+      "id": "node-7",
+      "type": "integrationNode",
+      "position": { "x": 250, "y": 950 },
+      "data": {
+        "label": "Check Anomaly",
+        "bpmnType": "integration",
+        "integrationTemplateId": "tpl-kya-monitor",
+        "operationId": "checkAnomaly",
+        "inputMapping": { "passportId": "{{node-1.passportId}}", "action": "card_spend", "amountCents": "500" },
+        "outputMapping": { "anomalyScore": "body.anomalyScore", "flags": "body.flags", "autoRevoked": "body.autoRevoked" },
+        "outputSchema": [{ "key": "anomalyScore", "type": "number" }, { "key": "flags", "type": "object" }, { "key": "autoRevoked", "type": "boolean" }],
+        "stepConfig": { "method": "POST", "path": "/{{passportId}}/anomaly-check", "bodyTemplate": { "action": "{{action}}", "amountCents": "{{amountCents}}" } }
+      }
+    },
+    { "id": "node-8", "type": "gatewayNode", "position": { "x": 250, "y": 1100 }, "data": { "label": "Exhausted or Anomaly?", "bpmnType": "exclusiveGateway", "conditions": [{ "edgeId": "e-node-8-node-9", "expression": "(body.anomalyScore || 0) < 0.7 && body.autoRevoked !== true" }, { "edgeId": "e-node-8-node-cancel", "expression": "(body.anomalyScore || 0) >= 0.7 || body.autoRevoked === true" }] } },
+    {
+      "id": "node-9",
+      "type": "integrationNode",
+      "position": { "x": 100, "y": 1250 },
+      "data": {
+        "label": "Log Success",
+        "bpmnType": "integration",
+        "integrationTemplateId": "tpl-kya-monitor",
+        "operationId": "logAudit",
+        "inputMapping": { "passportId": "{{node-1.passportId}}", "action": "virtual_card_success", "amountCents": "500", "status": "completed" },
+        "outputMapping": { "id": "body.id" },
+        "outputSchema": [{ "key": "id", "type": "string" }],
+        "stepConfig": { "method": "POST", "path": "/{{passportId}}/audit", "bodyTemplate": { "action": "{{action}}", "amountCents": "{{amountCents}}", "status": "{{status}}" } }
+      }
+    },
+    { "id": "node-10", "type": "endEventNode", "position": { "x": 100, "y": 1400 }, "data": { "label": "End", "bpmnType": "endEvent" } },
+    {
+      "id": "node-cancel",
+      "type": "integrationNode",
+      "position": { "x": 400, "y": 1250 },
+      "data": {
+        "label": "Cancel Card",
+        "bpmnType": "integration",
+        "integrationTemplateId": "tpl-stripe-issuing",
+        "operationId": "cancelCard",
+        "inputMapping": { "cardId": "{{node-5.id}}" },
+        "outputMapping": { "id": "body.id", "status": "body.status" },
+        "outputSchema": [{ "key": "id", "type": "string" }, { "key": "status", "type": "string" }],
+        "stepConfig": { "method": "POST", "path": "/issuing/cards/{{cardId}}", "bodyTemplate": { "status": "inactive" } }
+      }
+    },
+    { "id": "node-cancel-end", "type": "endEventNode", "position": { "x": 400, "y": 1400 }, "data": { "label": "End", "bpmnType": "endEvent" } }
+  ],
+  "edges": [
+    { "id": "e-node-1-node-2", "source": "node-1", "target": "node-2", "type": "conditional", "data": {} },
+    { "id": "e-node-2-node-3", "source": "node-2", "target": "node-3", "type": "conditional", "data": {} },
+    { "id": "e-node-3-node-4", "source": "node-3", "target": "node-4", "type": "conditional", "data": {} },
+    { "id": "e-node-4-node-5", "source": "node-4", "target": "node-5", "type": "conditional", "data": {} },
+    { "id": "e-node-5-node-6", "source": "node-5", "target": "node-6", "type": "conditional", "data": {} },
+    { "id": "e-node-6-node-7", "source": "node-6", "target": "node-7", "type": "conditional", "data": {} },
+    { "id": "e-node-7-node-8", "source": "node-7", "target": "node-8", "type": "conditional", "data": {} },
+    { "id": "e-node-8-node-9", "source": "node-8", "target": "node-9", "type": "conditional", "data": { "label": "OK" } },
+    { "id": "e-node-8-node-cancel", "source": "node-8", "target": "node-cancel", "type": "conditional", "data": { "label": "Cancel" } },
+    { "id": "e-node-9-node-10", "source": "node-9", "target": "node-10", "type": "conditional", "data": {} },
+    { "id": "e-node-cancel-end", "source": "node-cancel", "target": "node-cancel-end", "type": "conditional", "data": {} }
+  ]
+}

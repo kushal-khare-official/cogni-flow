@@ -1,7 +1,7 @@
 import type { BpmnNode, BpmnEdge, ExecutionTraceStep } from "../workflow/types";
 import { BpmnNodeType } from "../workflow/types";
 import { ExecutionContext } from "./context";
-import { resolveExpression, resolveTemplate, evaluateCondition } from "./expression";
+import { resolveExpression, resolveTemplate, evaluateCondition, getByPath } from "./expression";
 import { dispatchExecutor, type IntegrationType, type ExecutionMode } from "./executor-registry";
 import { prisma } from "@/lib/db";
 import { resolveCredential } from "@/lib/credentials/store";
@@ -21,7 +21,7 @@ const GATEWAY_TYPES = new Set([
 
 export interface ExecutionCallbacks {
   onNodeStart?: (nodeId: string) => void;
-  onNodeComplete?: (nodeId: string, output: Record<string, unknown>) => void;
+  onNodeComplete?: (nodeId: string, output: Record<string, unknown>, input?: Record<string, unknown>) => void;
   onNodeError?: (nodeId: string, error: string) => void;
 }
 
@@ -48,6 +48,9 @@ export async function executeWorkflow(
   }
 
   ctx.set(startNode.id, input);
+  // Alias start node output to "node-1" so {{node-1.*}} in body templates and input mapping resolve
+  // (workflows/demos often use node-1 for start regardless of actual node id)
+  ctx.set("node-1", input as Record<string, unknown>);
 
   let currentNodeId: string | null = startNode.id;
   let globalError: string | undefined;
@@ -63,8 +66,10 @@ export async function executeWorkflow(
 
     callbacks?.onNodeStart?.(currentNodeId);
 
+    const isStartOrWebhook =
+      bpmnType === BpmnNodeType.StartEvent || bpmnType === BpmnNodeType.WebhookTrigger;
     try {
-      if (bpmnType === BpmnNodeType.StartEvent || bpmnType === BpmnNodeType.WebhookTrigger) {
+      if (isStartOrWebhook) {
         output = { ...input };
       } else if (bpmnType === BpmnNodeType.EndEvent) {
         output = gatherInputs(currentNodeId, edges, ctx);
@@ -76,7 +81,7 @@ export async function executeWorkflow(
           duration: Date.now() - startTime,
         });
         ctx.set(currentNodeId, output);
-        callbacks?.onNodeComplete?.(currentNodeId, output);
+        callbacks?.onNodeComplete?.(currentNodeId, output, gatherInputs(currentNodeId, edges, ctx));
 
         const webhookUrl = node.data.webhookUrl as string | undefined;
         if (webhookUrl) {
@@ -86,8 +91,20 @@ export async function executeWorkflow(
         }
 
         break;
-      } else if (node.data.integrationId) {
-        output = await executeIntegrationNode(node, ctx, mode);
+      } else if (node.data.integrationId || node.data.integrationTemplateId) {
+        const integrationResult = await executeIntegrationNode(node, ctx, mode);
+        const outputMapping = node.data.outputMapping as Record<string, string> | undefined;
+        if (outputMapping && typeof integrationResult === "object" && integrationResult !== null && !Array.isArray(integrationResult)) {
+          output = {};
+          for (const [stepKey, path] of Object.entries(outputMapping)) {
+            if (!path.trim()) continue;
+            const value = getByPath(integrationResult as Record<string, unknown>, path);
+            if (value !== undefined) (output as Record<string, unknown>)[stepKey] = value;
+          }
+          if (Object.keys(output as Record<string, unknown>).length === 0) output = integrationResult;
+        } else {
+          output = integrationResult;
+        }
       } else if (GATEWAY_TYPES.has(bpmnType)) {
         const nodeInput = gatherInputs(currentNodeId, edges, ctx);
         output = nodeInput;
@@ -100,13 +117,17 @@ export async function executeWorkflow(
         decision = continuing
           ? `Iteration ${iteration} — continuing`
           : `Iteration ${iteration} — loop finished`;
-      } else {
+      } else if (!isStartOrWebhook) {
         const nodeInput = gatherInputs(currentNodeId, edges, ctx);
         output = { ...nodeInput, [`${node.data.label}_processed`]: true };
       }
 
       ctx.set(currentNodeId, output);
-      callbacks?.onNodeComplete?.(currentNodeId, output);
+      if (isStartOrWebhook) {
+        ctx.set("node-1", output as Record<string, unknown>);
+      }
+      const nodeInput = gatherInputs(currentNodeId, edges, ctx);
+      callbacks?.onNodeComplete?.(currentNodeId, output, nodeInput);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       callbacks?.onNodeError?.(currentNodeId, errorMsg);
@@ -119,11 +140,11 @@ export async function executeWorkflow(
         for (let r = 0; r < retryCount; r++) {
           try {
             await new Promise((res) => setTimeout(res, 1000 * (r + 1)));
-            if (node.data.integrationId) {
+            if (node.data.integrationId || node.data.integrationTemplateId) {
               output = await executeIntegrationNode(node, ctx, mode);
             }
             ctx.set(currentNodeId, output);
-            callbacks?.onNodeComplete?.(currentNodeId, output);
+            callbacks?.onNodeComplete?.(currentNodeId, output, gatherInputs(currentNodeId, edges, ctx));
             retried = true;
             break;
           } catch {
@@ -257,37 +278,66 @@ async function executeIntegrationNode(
   ctx: ExecutionContext,
   mode: ExecutionMode,
 ): Promise<Record<string, unknown>> {
-  const { integrationId, credentialId, inputMapping, stepConfig: rawStepConfig } = node.data;
-  if (!integrationId) {
+  const resolvedIntegrationId =
+    (node.data.integrationId as string) || (node.data.integrationTemplateId as string);
+  const { credentialId, inputMapping, stepConfig: rawStepConfig } = node.data;
+  if (!resolvedIntegrationId) {
     throw new Error("Service task missing integration ID");
   }
 
   const integration = await prisma.integration.findUnique({
-    where: { id: integrationId },
+    where: { id: resolvedIntegrationId },
   });
   if (!integration) {
-    throw new Error(`Integration not found: ${integrationId}`);
+    throw new Error(`Integration not found: ${resolvedIntegrationId}`);
   }
 
   const baseConfig = JSON.parse(integration.baseConfig);
   const mockConfig = JSON.parse(integration.mockConfig);
   const type = integration.type as IntegrationType;
 
-  // Build operation-like shape from node stepConfig (and legacy config overrides)
   const nodeConfig = (node.data.config ?? {}) as Record<string, unknown>;
   const stepConfig = (rawStepConfig ?? {}) as Record<string, unknown>;
+  const operationIdFromNode = node.data.operationId as string | undefined;
 
-  const operation = {
-    id: "default",
-    method: (stepConfig.method ?? nodeConfig.methodOverride ?? "GET") as string,
-    path: (stepConfig.path ?? nodeConfig.pathOverride ?? (baseConfig.defaultPath as string | undefined) ?? "") as string,
-    bodyTemplate: stepConfig.bodyTemplate ?? (nodeConfig.bodyOverride ? (typeof nodeConfig.bodyOverride === "string" ? (() => { try { return JSON.parse(nodeConfig.bodyOverride as string); } catch { return undefined; } })() : nodeConfig.bodyOverride) : undefined),
-    queryTemplate: stepConfig.queryTemplate as Record<string, string> | undefined,
-    headersOverride: (stepConfig.headersOverride ?? (nodeConfig.headersOverride ? (typeof nodeConfig.headersOverride === "string" ? (() => { try { return JSON.parse(nodeConfig.headersOverride as string); } catch { return undefined; } })() : nodeConfig.headersOverride) : undefined)) as Record<string, string> | undefined,
-    toolName: (stepConfig.toolName ?? nodeConfig.toolName ?? "") as string,
-    codeTemplate: (stepConfig.code ?? node.data.code) as string | undefined,
-    inputSchema: (stepConfig.inputSchema ?? []) as Array<{ key: string; default?: unknown }>,
-  };
+  // If integration has predefined operations and node specifies operationId, use that operation
+  const operationsJson = integration.operations ?? "[]";
+  const operations = JSON.parse(operationsJson) as Array<{
+    id: string;
+    method?: string;
+    path?: string;
+    bodyTemplate?: unknown;
+    queryTemplate?: Record<string, string>;
+    inputSchema?: Array<{ key: string; default?: unknown }>;
+  }>;
+  const predefinedOp =
+    operationIdFromNode && operations.length > 0
+      ? operations.find((op) => op.id === operationIdFromNode)
+      : undefined;
+
+  const operation = predefinedOp
+    ? {
+        id: predefinedOp.id,
+        method: (predefinedOp.method ?? stepConfig.method ?? "GET") as string,
+        path: (predefinedOp.path ?? stepConfig.path ?? "") as string,
+        bodyTemplate: predefinedOp.bodyTemplate ?? stepConfig.bodyTemplate,
+        queryTemplate: (predefinedOp.queryTemplate ?? stepConfig.queryTemplate) as Record<string, string> | undefined,
+        headersOverride: stepConfig.headersOverride as Record<string, string> | undefined,
+        toolName: (stepConfig.toolName ?? "") as string,
+        codeTemplate: (stepConfig.code ?? node.data.code) as string | undefined,
+        inputSchema: (predefinedOp.inputSchema ?? stepConfig.inputSchema ?? []) as Array<{ key: string; default?: unknown }>,
+      }
+    : {
+        id: operationIdFromNode ?? "default",
+        method: (stepConfig.method ?? nodeConfig.methodOverride ?? "GET") as string,
+        path: (stepConfig.path ?? nodeConfig.pathOverride ?? (baseConfig.defaultPath as string | undefined) ?? "") as string,
+        bodyTemplate: stepConfig.bodyTemplate ?? (nodeConfig.bodyOverride ? (typeof nodeConfig.bodyOverride === "string" ? (() => { try { return JSON.parse(nodeConfig.bodyOverride as string); } catch { return undefined; } })() : nodeConfig.bodyOverride) : undefined),
+        queryTemplate: stepConfig.queryTemplate as Record<string, string> | undefined,
+        headersOverride: (stepConfig.headersOverride ?? (nodeConfig.headersOverride ? (typeof nodeConfig.headersOverride === "string" ? (() => { try { return JSON.parse(nodeConfig.headersOverride as string); } catch { return undefined; } })() : nodeConfig.headersOverride) : undefined)) as Record<string, string> | undefined,
+        toolName: (stepConfig.toolName ?? nodeConfig.toolName ?? "") as string,
+        codeTemplate: (stepConfig.code ?? node.data.code) as string | undefined,
+        inputSchema: (stepConfig.inputSchema ?? []) as Array<{ key: string; default?: unknown }>,
+      };
 
   let credential: Record<string, string> | null = null;
   if (credentialId && mode === "live") {
@@ -296,6 +346,20 @@ async function executeIntegrationNode(
     } catch {
       // fall through to mock if credential resolution fails
     }
+  }
+
+  // Build default credential from integration schema so {{credential.*}} (e.g. credential.cogniflowUrl) always resolves
+  const credentialSchemaJson = integration.credentialSchema ?? "[]";
+  const credentialSchema = JSON.parse(credentialSchemaJson) as Array<{ key: string; default?: string }>;
+  const defaultCredential: Record<string, string> = {};
+  for (const field of credentialSchema) {
+    if (field.default !== undefined && field.default !== null) {
+      defaultCredential[field.key] = String(field.default);
+    }
+  }
+  const credentialForContext: Record<string, string> = { ...defaultCredential, ...(credential ?? {}) };
+  if (type === "http" || Object.keys(credentialForContext).length > 0) {
+    ctx.set("credential", credentialForContext);
   }
 
   // Build resolved inputs from input mapping
@@ -313,13 +377,23 @@ async function executeIntegrationNode(
     }
   }
 
-  if (credential) {
-    ctx.set("credential", credential);
-  }
   ctx.set("_inputs", resolvedInputs);
 
+  // Use live when: webhook (always), or user asked for live and we have either a stored credential
+  // or for HTTP we have defaultCredential (e.g. cogniflowUrl) so baseUrl resolves and we can call the API
+  const canRunLiveHttp =
+    type === "http" && mode === "live" && Object.keys(credentialForContext).length > 0;
   const effectiveMode: ExecutionMode =
-    type === "webhook" ? "live" : mode;
+    type === "webhook" ? "live" : mode === "live" && (credential || canRunLiveHttp) ? "live" : "mock";
+
+  const stripeAgentParams =
+    type === "stripe_agent" && credential
+      ? {
+          apiKey: credential.apiKey ?? credential.secretKey ?? "",
+          operationId: operation?.id ?? operationIdFromNode ?? "createPaymentIntent",
+          resolvedInputs,
+        }
+      : undefined;
 
   const language = (stepConfig.language ?? baseConfig.language ?? "javascript") as string;
 
@@ -355,7 +429,8 @@ async function executeIntegrationNode(
       groupId: baseConfig.groupId ?? resolvedInputs.groupId,
       ...resolvedInputs,
     } : undefined,
+    stripeAgentParams,
     mockConfig,
-    operationId: "default",
+    operationId: operation?.id ?? operationIdFromNode ?? "default",
   }, ctx);
 }

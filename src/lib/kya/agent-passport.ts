@@ -140,7 +140,7 @@ export function validatePassport(
 
 export async function revokeAgent(agentId: string) {
   return prisma.$transaction(async (tx) => {
-    const agent = await tx.agent.update({
+    const agent = await tx.agentPassport.update({
       where: { id: agentId },
       data: {
         status: "revoked",
@@ -148,14 +148,9 @@ export async function revokeAgent(agentId: string) {
       },
     });
 
-    await tx.agentVirtualCard.updateMany({
-      where: { agentId, status: { in: ["active", "frozen"] } },
-      data: { status: "deactivated", deactivatedAt: new Date() },
-    });
-
     await tx.agentMandate.updateMany({
-      where: { agentId, active: true },
-      data: { active: false, revokedAt: new Date() },
+      where: { agentPassportId: agentId, status: "active" },
+      data: { status: "revoked" },
     });
 
     return agent;

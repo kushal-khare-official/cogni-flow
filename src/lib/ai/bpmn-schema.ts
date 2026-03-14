@@ -70,7 +70,7 @@ const bpmnNodeSchema = z.object({
       category: z.string().describe("Category label, e.g. api, messaging, ai, code, custom"),
       description: z.string().describe("Brief description of what this integration does"),
       baseConfig: z.array(z.object({ key: z.string(), value: z.string() })).describe("Base configuration key-value pairs (e.g. baseUrl, brokers, topic)"),
-    }).describe("New integration to create; set name to empty string if no new integration needed"),
+    }).nullable().describe("Define a new integration if no existing one fits"),
     outputSchema: z.array(z.object({
       key: z.string().describe("Output field name this step produces"),
       type: z.string().describe("Field type, e.g. string, number, object; use empty string if omitted"),

@@ -138,6 +138,34 @@ Each step that calls an external service is one serviceTask with one Integration
 - **mcp_tool** — MCP Tool Call: stepConfig uses toolName
 - **code** — Custom Code Script: stepConfig uses code, language
 - **kafka** — Kafka Topic Consumer: stepConfig or inputMapping for topic, groupId, brokers
+- **stripe_agent** — Stripe Agent Toolkit: execute Stripe API actions (payment intents, confirm with SPT for ACP, refunds, payment links, products) for agentic payment workflows
+
+## KYA (Know Your Agent) Templates
+
+Use these integration template IDs for agent onboarding and guardrails (set integrationId to template id and operationId to the operation):
+- **tpl-kya-passport** — Agent identity: registerAgent, verifyPassport, getPassport, revokePassport
+- **tpl-kya-mandate** — Delegation: createMandate, validateAction, recordSpend
+- **tpl-kya-monitor** — Monitoring: checkAnomaly, logAudit, getAuditTrail
+
+## Stripe Agentic Payment Templates
+
+- **tpl-stripe** — Payments: createPaymentIntent, retrievePaymentIntent, listCustomers, createCharge, createRefund, createPaymentLink, createProduct, createPrice
+- **tpl-stripe-issuing** — Virtual Cards: createCardholder, createVirtualCard, getCard, cancelCard
+- **tpl-stripe-billing** — Billing: createMeterEvent, createSubscription, createInvoice, listInvoices
+- **tpl-stripe-agent-toolkit** — Agent Toolkit: createPaymentIntent, confirmPaymentIntent (with sharedPaymentGrantedToken for Stripe ACP — agent pays on behalf of user), retrievePaymentIntent, createRefund, createPaymentLink, createProduct, createPrice, listCustomers, listPrices
+
+## Agent pays on behalf of user (Stripe ACP)
+
+To have the agent complete payment on behalf of the user using Stripe's Agentic Commerce Protocol (ACP), use two steps: (1) createPaymentIntent (amount, currency); (2) confirmPaymentIntent with paymentIntentId from the previous step and sharedPaymentGrantedToken from workflow input (the SPT is provisioned when the user authorizes the agent in the ACP flow). The SPT can be supplied via workflow trigger input or an ACP Complete Checkout request.
+
+## Agentic Payment Workflow Composition
+
+When the user describes an agentic payment or KYA workflow, compose it as follows:
+1. Start with KYA nodes: verifyPassport (tpl-kya-passport) then validateAction (tpl-kya-mandate) to check mandate before payment.
+2. Then add Stripe action nodes: use tpl-stripe or tpl-stripe-agent-toolkit for the actual payment/refund/card operation.
+3. After the Stripe action: recordSpend (tpl-kya-mandate) then checkAnomaly (tpl-kya-monitor).
+4. Use an ExclusiveGateway after checkAnomaly to branch on the anomaly result: if anomalyScore >= 0.7 use revokePassport (tpl-kya-passport) then EndEvent (error); otherwise logAudit (tpl-kya-monitor) then EndEvent (success).
+5. For agent onboarding flows: registerAgent (tpl-kya-passport) -> createMandate (tpl-kya-mandate) -> optional Stripe test (e.g. listCustomers) -> logAudit (tpl-kya-monitor) -> EndEvent.
 
 - Provide a clear, concise label for every node.
 - Include a brief description for non-trivial nodes.`;

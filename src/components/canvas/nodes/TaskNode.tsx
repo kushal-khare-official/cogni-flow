@@ -35,6 +35,23 @@ function stepSummary(data: BpmnNode["data"]): string | null {
   return null;
 }
 
+function operationSummaryFromIntegration(
+  integration: { operations?: string | null } | undefined,
+  operationId: string
+): string | null {
+  if (!integration) return null;
+  try {
+    const raw = integration.operations ?? "[]";
+    const ops = JSON.parse(raw) as Array<{ id: string; name?: string; method?: string; path?: string }>;
+    const op = ops.find((o) => o.id === operationId);
+    if (op?.name) return op.name;
+    if (op?.method || op?.path) return `${op?.method ?? "GET"} ${op?.path ?? ""}`.trim();
+    return operationId;
+  } catch {
+    return operationId;
+  }
+}
+
 function TaskNodeComponent({ data, selected }: NodeProps<BpmnNode>) {
   const Icon = TASK_ICONS[data.bpmnType] ?? Cog;
   const status = data.executionStatus;
@@ -42,7 +59,13 @@ function TaskNodeComponent({ data, selected }: NodeProps<BpmnNode>) {
   const integration = data.integrationId
     ? integrations.find((t) => t.id === data.integrationId)
     : undefined;
-  const summary = stepSummary(data);
+  const stepConfigSummary = stepSummary(data);
+  const operationId = data.operationId as string | undefined;
+  const operationSummary =
+    integration && operationId
+      ? operationSummaryFromIntegration(integration, operationId)
+      : null;
+  const summary = stepConfigSummary ?? operationSummary;
 
   return (
     <div

@@ -1,27 +1,15 @@
-import { NextRequest, NextResponse } from "next/server";
-import { verifyAgentApiKey } from "@/lib/kya/agent-passport";
+import { NextResponse } from "next/server";
 
-type Params = { params: Promise<{ id: string }> };
-
-export async function POST(request: NextRequest, { params }: Params) {
-  try {
-    const { id } = await params;
-    const body = await request.json();
-    const { apiKey } = body;
-
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: "Missing required field: apiKey" },
-        { status: 400 }
-      );
-    }
-
-    const valid = await verifyAgentApiKey(id, apiKey);
-    return NextResponse.json({ valid });
-  } catch (error) {
-    return NextResponse.json(
-      { error: "Failed to verify API key", detail: String(error) },
-      { status: 500 }
-    );
-  }
+/**
+ * Legacy endpoint. Agent authentication for workflow execution
+ * uses credentials linked to the integration node (Stripe RAK, etc.).
+ */
+export async function POST() {
+  return NextResponse.json(
+    {
+      error: "Use workflow credentials and POST /api/agents/:id/verify for passport verification",
+      migration: "passport_verify",
+    },
+    { status: 410 },
+  );
 }

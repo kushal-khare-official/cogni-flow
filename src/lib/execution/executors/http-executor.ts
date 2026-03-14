@@ -91,7 +91,16 @@ export async function executeHttp(
 
   let body: string | undefined;
   if (operation.bodyTemplate !== undefined) {
-    const resolvedBody = resolveTemplate(operation.bodyTemplate, context);
+    // Normalize: parse JSON string to object so each field value is resolved (e.g. {{node-1.name}} → actual value)
+    let bodyTemplate = operation.bodyTemplate;
+    if (typeof bodyTemplate === "string" && bodyTemplate.trim()) {
+      try {
+        bodyTemplate = JSON.parse(bodyTemplate) as Record<string, unknown>;
+      } catch {
+        // not valid JSON, resolveTemplate will still substitute {{...}} in the string
+      }
+    }
+    const resolvedBody = resolveTemplate(bodyTemplate, context);
     body = typeof resolvedBody === "string"
       ? resolvedBody
       : JSON.stringify(resolvedBody);
