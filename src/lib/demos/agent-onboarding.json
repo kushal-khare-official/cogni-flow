@@ -13,6 +13,7 @@
         "integrationTemplateId": "tpl-kya-passport",
         "operationId": "registerAgent",
         "inputMapping": { "name": "{{node-1.name}}", "modelProvider": "{{node-1.modelProvider}}", "modelVersion": "{{node-1.modelVersion}}", "creatorName": "{{node-1.creatorName}}" },
+        "outputMapping": { "id": "body.id", "fingerprint": "body.fingerprint", "status": "body.status" },
         "outputSchema": [{ "key": "id", "type": "string", "description": "Passport ID" }, { "key": "fingerprint", "type": "string" }, { "key": "status", "type": "string" }],
         "stepConfig": { "method": "POST", "path": "/", "bodyTemplate": { "name": "{{name}}", "modelProvider": "{{modelProvider}}", "modelVersion": "{{modelVersion}}", "creatorName": "{{creatorName}}" } }
       }
@@ -27,6 +28,7 @@
         "integrationTemplateId": "tpl-kya-mandate",
         "operationId": "createMandate",
         "inputMapping": { "passportId": "{{node-2.id}}", "description": "Onboarding mandate", "maxAmountCents": "5000", "maxTotalSpendCents": "50000" },
+        "outputMapping": { "id": "body.id", "status": "body.status" },
         "outputSchema": [{ "key": "id", "type": "string", "description": "Mandate ID" }, { "key": "status", "type": "string" }],
         "stepConfig": { "method": "POST", "path": "/{{passportId}}/mandate", "bodyTemplate": { "description": "{{description}}", "maxAmountCents": "{{maxAmountCents}}", "maxTotalSpendCents": "{{maxTotalSpendCents}}" } }
       }
@@ -55,6 +57,7 @@
         "integrationTemplateId": "tpl-kya-monitor",
         "operationId": "logAudit",
         "inputMapping": { "passportId": "{{node-2.id}}", "action": "onboarding_complete", "amountCents": "0", "status": "success" },
+        "outputMapping": { "id": "body.id" },
         "outputSchema": [{ "key": "id", "type": "string", "description": "Audit log ID" }],
         "stepConfig": { "method": "POST", "path": "/{{passportId}}/audit", "bodyTemplate": { "action": "{{action}}", "amountCents": "{{amountCents}}", "status": "{{status}}" } }
       }

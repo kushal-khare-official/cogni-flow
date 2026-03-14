@@ -55,6 +55,8 @@ export interface BpmnNodeData {
   stepConfig?: Record<string, unknown>;
   credentialId?: string;
   inputMapping?: Record<string, string>;
+  /** Map integration response to step output: step key -> dot path into integration result (e.g. "body.id", "body") */
+  outputMapping?: Record<string, string>;
   outputSchema?: { key: string; type?: string; description?: string }[];
   // Code-specific
   code?: string;

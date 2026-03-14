@@ -1,7 +1,7 @@
 import type { BpmnNode, BpmnEdge, ExecutionTraceStep } from "../workflow/types";
 import { BpmnNodeType } from "../workflow/types";
 import { ExecutionContext } from "./context";
-import { resolveExpression, resolveTemplate, evaluateCondition } from "./expression";
+import { resolveExpression, resolveTemplate, evaluateCondition, getByPath } from "./expression";
 import { dispatchExecutor, type IntegrationType, type ExecutionMode } from "./executor-registry";
 import { prisma } from "@/lib/db";
 import { resolveCredential } from "@/lib/credentials/store";
@@ -92,7 +92,19 @@ export async function executeWorkflow(
 
         break;
       } else if (node.data.integrationId || node.data.integrationTemplateId) {
-        output = await executeIntegrationNode(node, ctx, mode);
+        const integrationResult = await executeIntegrationNode(node, ctx, mode);
+        const outputMapping = node.data.outputMapping as Record<string, string> | undefined;
+        if (outputMapping && typeof integrationResult === "object" && integrationResult !== null && !Array.isArray(integrationResult)) {
+          output = {};
+          for (const [stepKey, path] of Object.entries(outputMapping)) {
+            if (!path.trim()) continue;
+            const value = getByPath(integrationResult as Record<string, unknown>, path);
+            if (value !== undefined) (output as Record<string, unknown>)[stepKey] = value;
+          }
+          if (Object.keys(output as Record<string, unknown>).length === 0) output = integrationResult;
+        } else {
+          output = integrationResult;
+        }
       } else if (GATEWAY_TYPES.has(bpmnType)) {
         const nodeInput = gatherInputs(currentNodeId, edges, ctx);
         output = nodeInput;
