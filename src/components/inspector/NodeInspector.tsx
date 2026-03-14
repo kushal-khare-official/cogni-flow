@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
-import { SlidersHorizontal, Trash2, Plus, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { SlidersHorizontal, Trash2, Plus, X, Send, Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { useWorkflowStore } from "@/lib/store/workflow-store";
 import { useIntegrationStore } from "@/lib/store/integration-store";
 import { getNodeIcon } from "@/lib/node-icons";
@@ -49,6 +49,15 @@ export function NodeInspector() {
     fetchIntegrations();
   }, [fetchIntegrations]);
 
+  const [testLoading, setTestLoading] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    status: number;
+    statusText: string;
+    body: string;
+    error?: string;
+  } | null>(null);
+  const [testToken, setTestToken] = useState("");
+
   const node = nodes.find((n) => n.id === selectedNodeId);
 
   if (!node) {
@@ -79,6 +88,9 @@ export function NodeInspector() {
 
   const integrationType = selectedIntegration?.type;
   const stepConfig = (data.stepConfig ?? {}) as Record<string, unknown>;
+  const integrationBaseConfig = selectedIntegration
+    ? (() => { try { return JSON.parse(selectedIntegration.baseConfig || "{}") as Record<string, unknown>; } catch { return {}; } })()
+    : {};
 
   const outgoingEdges = edges.filter((e) => e.source === node.id);
 
@@ -95,6 +107,53 @@ export function NodeInspector() {
     if (!selectedNodeId) return;
     deleteNode(selectedNodeId);
     selectNode(null);
+  }
+
+  async function sendIntegrationTestRequest() {
+    if (!selectedIntegration || selectedIntegration.type !== "http") return;
+    const base = JSON.parse(selectedIntegration.baseConfig || "{}") as Record<string, unknown>;
+    const baseUrl = (base.baseUrl as string)?.trim();
+    if (!baseUrl) {
+      setTestResult({ status: 0, statusText: "", body: "", error: "Integration has no Base URL." });
+      return;
+    }
+    const path = (stepConfig.path as string)?.trim() ?? (base.defaultPath as string)?.trim() ?? "";
+    const url = path ? `${baseUrl.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}` : baseUrl;
+    const method = ((stepConfig.method as string) ?? (base.defaultMethod as string) ?? "GET").toUpperCase();
+    setTestLoading(true);
+    setTestResult(null);
+    try {
+      const headers: Record<string, string> = {};
+      const defaultHeaders = base.defaultHeaders as Record<string, string> | undefined;
+      if (defaultHeaders && typeof defaultHeaders === "object") Object.assign(headers, defaultHeaders);
+      if ((base.authType as string) === "bearer" && testToken.trim()) {
+        headers["Authorization"] = `Bearer ${testToken.trim()}`;
+      }
+      let body: string | undefined;
+      const bodyTemplate = stepConfig.bodyTemplate ?? base.defaultRequestBody;
+      if (method !== "GET" && method !== "HEAD" && bodyTemplate !== undefined && bodyTemplate !== null) {
+        body = typeof bodyTemplate === "string" ? bodyTemplate : JSON.stringify(bodyTemplate);
+        if (!headers["Content-Type"]) headers["Content-Type"] = "application/json";
+      }
+      const res = await fetch(url, { method, headers, body });
+      const text = await res.text();
+      let parsed: string;
+      try {
+        parsed = JSON.stringify(JSON.parse(text), null, 2);
+      } catch {
+        parsed = text;
+      }
+      setTestResult({ status: res.status, statusText: res.statusText, body: parsed });
+    } catch (err) {
+      setTestResult({
+        status: 0,
+        statusText: "",
+        body: "",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setTestLoading(false);
+    }
   }
 
   return (
@@ -514,6 +573,59 @@ export function NodeInspector() {
                         rows={3}
                         className="resize-none font-mono text-xs"
                       />
+                    </div>
+                    <Separator />
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold text-zinc-600">Test integration</Label>
+                      {(integrationBaseConfig.authType as string) === "bearer" && (
+                        <div className="space-y-1">
+                          <Label className="text-[11px] text-zinc-500">Test token (optional, not saved)</Label>
+                          <Input
+                            type="password"
+                            value={testToken}
+                            onChange={(e) => setTestToken(e.target.value)}
+                            placeholder="Bearer token for test only"
+                            className="font-mono text-xs"
+                            autoComplete="off"
+                          />
+                        </div>
+                      )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={sendIntegrationTestRequest}
+                        disabled={testLoading}
+                        className="gap-1.5 text-xs"
+                      >
+                        {testLoading ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <Send className="size-3.5" />
+                        )}
+                        {testLoading ? "Sending…" : "Send test request"}
+                      </Button>
+                      {testResult && (
+                        <div className="rounded-md border border-zinc-200 bg-zinc-50 p-2 dark:border-zinc-700 dark:bg-zinc-900/50">
+                          <div className="mb-1 flex items-center gap-2">
+                            {testResult.error ? (
+                              <XCircle className="size-3.5 text-red-500" />
+                            ) : testResult.status >= 200 && testResult.status < 300 ? (
+                              <CheckCircle2 className="size-3.5 text-emerald-500" />
+                            ) : (
+                              <XCircle className="size-3.5 text-amber-500" />
+                            )}
+                            <span className="text-[11px] font-medium">
+                              {testResult.error ? "Error" : `${testResult.status} ${testResult.statusText}`}
+                            </span>
+                          </div>
+                          {(testResult.error ?? testResult.body) && (
+                            <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded bg-zinc-100 p-1.5 font-mono text-[10px] dark:bg-zinc-800">
+                              {(testResult.error ?? (testResult.body || "(empty body)"))}
+                            </pre>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </>
                 )}
