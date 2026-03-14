@@ -175,14 +175,15 @@ export function ExecutionPanel() {
               No executions yet. Use the Run button to execute a workflow.
             </div>
           )}
-          {history.map((run) => {
-            const expanded = expandedTraces.has(run.id);
+          {history.map((run, index) => {
+            const runKey = run.id ?? `run-${index}`;
+            const expanded = expandedTraces.has(runKey);
             const trace =
               typeof run.trace === "string" ? JSON.parse(run.trace) : run.trace;
             return (
-              <div key={run.id} className="px-4 py-2">
+              <div key={runKey} className="px-4 py-2">
                 <button
-                  onClick={() => toggleTrace(run.id)}
+                  onClick={() => toggleTrace(runKey)}
                   className="flex w-full items-center gap-3 text-left"
                 >
                   {expanded ? (
@@ -202,7 +203,7 @@ export function ExecutionPanel() {
                   </span>
                 </button>
                 {expanded && Array.isArray(trace) && (
-                  <div className="ml-8 mt-2 space-y-1">
+                  <div className="ml-8 mt-2 space-y-2">
                     {trace.map(
                       (
                         step: {
@@ -212,24 +213,45 @@ export function ExecutionPanel() {
                           output?: unknown;
                         },
                         i: number,
-                      ) => (
-                        <div
-                          key={i}
-                          className="flex items-center gap-2 rounded bg-zinc-50 px-2 py-1 text-[11px]"
-                        >
-                          <span className="font-mono text-zinc-500">
-                            {step.nodeId}
-                          </span>
-                          <span className="text-zinc-400">
-                            {step.duration}ms
-                          </span>
-                          {step.decision && (
-                            <span className="text-amber-600">
-                              {step.decision}
-                            </span>
-                          )}
-                        </div>
-                      ),
+                      ) => {
+                        const hasOutput =
+                          step.output !== undefined &&
+                          step.output !== null &&
+                          (typeof step.output !== "object" ||
+                            Object.keys(step.output as Record<string, unknown>).length > 0);
+                        const outputStr =
+                          hasOutput &&
+                          (typeof step.output === "string"
+                            ? step.output
+                            : JSON.stringify(step.output, null, 2));
+                        return (
+                          <div key={i} className="rounded bg-zinc-50 overflow-hidden">
+                            <div className="flex flex-wrap items-center gap-2 px-2 py-1 text-[11px]">
+                              <span className="font-mono text-zinc-500">
+                                {step.nodeId}
+                              </span>
+                              <span className="text-zinc-400">
+                                {step.duration}ms
+                              </span>
+                              {step.decision && (
+                                <span className="text-amber-600">
+                                  {step.decision}
+                                </span>
+                              )}
+                            </div>
+                            {hasOutput && outputStr && (
+                              <details className="group">
+                                <summary className="cursor-pointer px-2 py-1 text-[10px] font-medium text-zinc-500 hover:bg-zinc-100">
+                                  Response
+                                </summary>
+                                <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all border-t border-zinc-200 bg-zinc-100/80 px-2 py-1.5 font-mono text-[10px] text-zinc-700">
+                                  {outputStr}
+                                </pre>
+                              </details>
+                            )}
+                          </div>
+                        );
+                      },
                     )}
                     {run.error && (
                       <div className="rounded bg-red-50 px-2 py-1 text-[11px] text-red-600">
