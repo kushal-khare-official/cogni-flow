@@ -13,6 +13,7 @@
         "integrationTemplateId": "tpl-kya-passport",
         "operationId": "verifyPassport",
         "inputMapping": { "passportId": "{{node-1.passportId}}" },
+        "outputMapping": { "valid": "body.valid", "status": "body.status" },
         "outputSchema": [{ "key": "valid", "type": "boolean" }, { "key": "status", "type": "string" }],
         "stepConfig": { "method": "POST", "path": "/{{passportId}}/verify" }
       }
@@ -27,6 +28,7 @@
         "integrationTemplateId": "tpl-kya-mandate",
         "operationId": "validateAction",
         "inputMapping": { "mandateId": "{{node-1.mandateId}}", "action": "create_card", "amountCents": "0" },
+        "outputMapping": { "allowed": "body.allowed", "remaining": "body.remaining" },
         "outputSchema": [{ "key": "allowed", "type": "boolean" }, { "key": "remaining", "type": "number" }],
         "stepConfig": { "method": "POST", "path": "/mandates/{{mandateId}}/validate", "bodyTemplate": { "action": "{{action}}", "amountCents": "{{amountCents}}" } }
       }
@@ -41,6 +43,7 @@
         "integrationTemplateId": "tpl-stripe-issuing",
         "operationId": "createCardholder",
         "inputMapping": { "name": "Demo Cardholder", "line1": "123 Main St", "country": "US" },
+        "outputMapping": { "id": "body.id", "name": "body.name" },
         "outputSchema": [{ "key": "id", "type": "string" }, { "key": "name", "type": "string" }],
         "stepConfig": { "method": "POST", "path": "/issuing/cardholders", "bodyTemplate": { "name": "{{name}}", "type": "individual", "billing[address][line1]": "{{line1}}", "billing[address][country]": "{{country}}" } }
       }
@@ -55,6 +58,7 @@
         "integrationTemplateId": "tpl-stripe-issuing",
         "operationId": "createVirtualCard",
         "inputMapping": { "cardholder": "{{node-4.id}}" },
+        "outputMapping": { "id": "body.id", "last4": "body.last4", "status": "body.status" },
         "outputSchema": [{ "key": "id", "type": "string" }, { "key": "last4", "type": "string" }, { "key": "status", "type": "string" }],
         "stepConfig": { "method": "POST", "path": "/issuing/cards", "bodyTemplate": { "cardholder": "{{cardholder}}", "type": "virtual" } }
       }
@@ -69,6 +73,7 @@
         "integrationTemplateId": "tpl-kya-mandate",
         "operationId": "recordSpend",
         "inputMapping": { "mandateId": "{{node-1.mandateId}}", "amountCents": "500", "action": "card_spend", "stripeObjectId": "{{node-5.id}}" },
+        "outputMapping": { "spentCents": "body.spentCents", "remaining": "body.remaining", "status": "body.status" },
         "outputSchema": [{ "key": "spentCents", "type": "number" }, { "key": "remaining", "type": "number" }, { "key": "status", "type": "string" }],
         "stepConfig": { "method": "POST", "path": "/mandates/{{mandateId}}/spend", "bodyTemplate": { "amountCents": "{{amountCents}}", "action": "{{action}}", "stripeObjectId": "{{stripeObjectId}}" } }
       }
@@ -83,6 +88,7 @@
         "integrationTemplateId": "tpl-kya-monitor",
         "operationId": "checkAnomaly",
         "inputMapping": { "passportId": "{{node-1.passportId}}", "action": "card_spend", "amountCents": "500" },
+        "outputMapping": { "anomalyScore": "body.anomalyScore", "flags": "body.flags", "autoRevoked": "body.autoRevoked" },
         "outputSchema": [{ "key": "anomalyScore", "type": "number" }, { "key": "flags", "type": "object" }, { "key": "autoRevoked", "type": "boolean" }],
         "stepConfig": { "method": "POST", "path": "/{{passportId}}/anomaly-check", "bodyTemplate": { "action": "{{action}}", "amountCents": "{{amountCents}}" } }
       }
@@ -98,6 +104,7 @@
         "integrationTemplateId": "tpl-kya-monitor",
         "operationId": "logAudit",
         "inputMapping": { "passportId": "{{node-1.passportId}}", "action": "virtual_card_success", "amountCents": "500", "status": "completed" },
+        "outputMapping": { "id": "body.id" },
         "outputSchema": [{ "key": "id", "type": "string" }],
         "stepConfig": { "method": "POST", "path": "/{{passportId}}/audit", "bodyTemplate": { "action": "{{action}}", "amountCents": "{{amountCents}}", "status": "{{status}}" } }
       }
@@ -113,6 +120,7 @@
         "integrationTemplateId": "tpl-stripe-issuing",
         "operationId": "cancelCard",
         "inputMapping": { "cardId": "{{node-5.id}}" },
+        "outputMapping": { "id": "body.id", "status": "body.status" },
         "outputSchema": [{ "key": "id", "type": "string" }, { "key": "status", "type": "string" }],
         "stepConfig": { "method": "POST", "path": "/issuing/cards/{{cardId}}", "bodyTemplate": { "status": "inactive" } }
       }

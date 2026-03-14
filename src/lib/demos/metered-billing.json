@@ -13,6 +13,7 @@
         "integrationTemplateId": "tpl-kya-passport",
         "operationId": "verifyPassport",
         "inputMapping": { "passportId": "{{node-1.passportId}}" },
+        "outputMapping": { "valid": "body.valid", "status": "body.status" },
         "outputSchema": [{ "key": "valid", "type": "boolean" }, { "key": "status", "type": "string" }],
         "stepConfig": { "method": "POST", "path": "/{{passportId}}/verify" }
       }
@@ -27,6 +28,7 @@
         "integrationTemplateId": "tpl-kya-mandate",
         "operationId": "validateAction",
         "inputMapping": { "mandateId": "{{node-1.mandateId}}", "action": "meter_usage", "amountCents": "0" },
+        "outputMapping": { "allowed": "body.allowed", "remaining": "body.remaining" },
         "outputSchema": [{ "key": "allowed", "type": "boolean" }, { "key": "remaining", "type": "number" }],
         "stepConfig": { "method": "POST", "path": "/mandates/{{mandateId}}/validate", "bodyTemplate": { "action": "{{action}}", "amountCents": "{{amountCents}}" } }
       }
@@ -41,6 +43,7 @@
         "integrationTemplateId": "tpl-stripe-billing",
         "operationId": "createMeterEvent",
         "inputMapping": { "event_name": "tokens_used", "payload": "{\"tokens\": 1500, \"model\": \"gpt-4\"}" },
+        "outputMapping": { "event_name": "body.event_name", "timestamp": "body.timestamp" },
         "outputSchema": [{ "key": "event_name", "type": "string" }, { "key": "timestamp", "type": "string" }],
         "stepConfig": { "method": "POST", "path": "/billing/meter_events", "bodyTemplate": { "event_name": "{{event_name}}", "payload": "{{payload}}" } }
       }
@@ -55,6 +58,7 @@
         "integrationTemplateId": "tpl-kya-mandate",
         "operationId": "recordSpend",
         "inputMapping": { "mandateId": "{{node-1.mandateId}}", "amountCents": "150", "action": "token_usage" },
+        "outputMapping": { "spentCents": "body.spentCents", "remaining": "body.remaining", "status": "body.status" },
         "outputSchema": [{ "key": "spentCents", "type": "number" }, { "key": "remaining", "type": "number" }, { "key": "status", "type": "string" }],
         "stepConfig": { "method": "POST", "path": "/mandates/{{mandateId}}/spend", "bodyTemplate": { "amountCents": "{{amountCents}}", "action": "{{action}}" } }
       }
@@ -69,6 +73,7 @@
         "integrationTemplateId": "tpl-stripe-billing",
         "operationId": "createInvoice",
         "inputMapping": { "customer": "{{node-1.customerId}}" },
+        "outputMapping": { "id": "body.id", "status": "body.status" },
         "outputSchema": [{ "key": "id", "type": "string" }, { "key": "status", "type": "string" }],
         "stepConfig": { "method": "POST", "path": "/invoices", "bodyTemplate": { "customer": "{{customer}}" } }
       }
@@ -83,6 +88,7 @@
         "integrationTemplateId": "tpl-kya-monitor",
         "operationId": "logAudit",
         "inputMapping": { "passportId": "{{node-1.passportId}}", "action": "billing_cycle", "amountCents": "150", "status": "invoiced" },
+        "outputMapping": { "id": "body.id" },
         "outputSchema": [{ "key": "id", "type": "string" }],
         "stepConfig": { "method": "POST", "path": "/{{passportId}}/audit", "bodyTemplate": { "action": "{{action}}", "amountCents": "{{amountCents}}", "status": "{{status}}" } }
       }

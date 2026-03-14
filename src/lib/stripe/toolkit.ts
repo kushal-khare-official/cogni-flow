@@ -14,6 +14,7 @@ export function createStripeClient(apiKey: string): Stripe {
  */
 export const STRIPE_AGENT_OPERATIONS = [
   "createPaymentIntent",
+  "confirmPaymentIntent",
   "retrievePaymentIntent",
   "listCustomers",
   "createRefund",

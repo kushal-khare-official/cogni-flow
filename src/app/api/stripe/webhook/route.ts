@@ -51,7 +51,14 @@ export async function POST(request: NextRequest) {
         break;
       }
       default:
-        // Unhandled event type
+        // SPT events (Stripe API 2026+); type may not be in Stripe.Event yet
+        if ((event as { type: string }).type === "shared_payment.granted_token.used") {
+          const token = event.data.object as { id?: string };
+          if (token?.id) console.info("[stripe/webhook] SPT used:", token.id);
+        } else if ((event as { type: string }).type === "shared_payment.granted_token.deactivated") {
+          const token = event.data.object as { id?: string; deactivated_reason?: string };
+          if (token?.id) console.info("[stripe/webhook] SPT deactivated:", token.id, token.deactivated_reason);
+        }
         break;
     }
     return NextResponse.json({ received: true });

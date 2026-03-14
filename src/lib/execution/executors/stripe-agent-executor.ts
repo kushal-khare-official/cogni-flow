@@ -35,6 +35,35 @@ export async function executeStripeAgent(
       return { id: intent.id, status: intent.status, amount: intent.amount };
     }
 
+    case "confirmPaymentIntent": {
+      const intentId = String(
+        resolvedInputs.paymentIntentId ?? resolvedInputs.id ?? "",
+      );
+      const spt = String(
+        resolvedInputs.sharedPaymentGrantedToken ??
+          resolvedInputs.shared_payment_granted_token ??
+          "",
+      );
+      if (!spt) {
+        throw new Error(
+          "confirmPaymentIntent requires sharedPaymentGrantedToken (SPT from Stripe ACP)",
+        );
+      }
+      const intent = await stripe.paymentIntents.confirm(intentId, {
+        payment_method_options: {
+          card: {
+            shared_payment_granted_token: spt,
+          } as Record<string, unknown>,
+        },
+      });
+      return {
+        id: intent.id,
+        status: intent.status,
+        amount: intent.amount,
+        client_secret: intent.client_secret ?? undefined,
+      };
+    }
+
     case "listCustomers": {
       const list = await stripe.customers.list({
         limit: Number(resolvedInputs.limit ?? 10),

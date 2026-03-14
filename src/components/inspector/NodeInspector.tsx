@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { SlidersHorizontal, Trash2, Plus, X, Send, Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { useWorkflowStore } from "@/lib/store/workflow-store";
 import { useIntegrationStore } from "@/lib/store/integration-store";
@@ -337,8 +337,7 @@ export function NodeInspector() {
         </Button>
       </div>
 
-      {/* Start Event — REST API request body schema */}
-      {data.bpmnType === BpmnNodeType.StartEvent && (
+      {(data.bpmnType as BpmnNodeType) === BpmnNodeType.StartEvent ? (
         <>
           <Separator />
           <div className="space-y-3">
@@ -430,10 +429,10 @@ export function NodeInspector() {
             )}
           </div>
         </>
-      )}
+      ) : null}
 
       {/* End Event — Webhook response URL */}
-      {data.bpmnType === BpmnNodeType.EndEvent && (
+      {(data.bpmnType as BpmnNodeType) === BpmnNodeType.EndEvent ? (
         <>
           <Separator />
           <div className="space-y-3">
@@ -463,7 +462,7 @@ export function NodeInspector() {
             </div>
           </div>
         </>
-      )}
+      ) : null}
 
       {/* Gateway conditions */}
       {isGateway && outgoingEdges.length > 0 && (
@@ -913,7 +912,7 @@ export function NodeInspector() {
       )}
 
       {/* Loop configuration */}
-      {data.bpmnType === BpmnNodeType.Loop && (
+      {(data.bpmnType as BpmnNodeType) === BpmnNodeType.Loop ? (
         <>
           <Separator />
           <div className="space-y-3">
@@ -973,7 +972,7 @@ export function NodeInspector() {
             })()}
           </div>
         </>
-      )}
+      ) : null}
 
       {/* Threshold */}
       {data.threshold !== undefined && (
