@@ -279,6 +279,7 @@ async function executeIntegrationNode(
   const stepConfig = (rawStepConfig ?? {}) as Record<string, unknown>;
   const operationIdFromNode = node.data.operationId as string | undefined;
 
+  // If integration has predefined operations and node specifies operationId, use that operation
   const operationsJson = integration.operations ?? "[]";
   const operations = JSON.parse(operationsJson) as Array<{
     id: string;
