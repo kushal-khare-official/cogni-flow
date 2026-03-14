@@ -1,16 +1,27 @@
-import { randomBytes, createCipheriv, createDecipheriv } from "crypto";
+import { randomBytes, createCipheriv, createDecipheriv, createHash } from "crypto";
 
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12;
+const KEY_LENGTH = 32;
 
+/** Derive a 32-byte key: use raw hex if 64-char valid hex, otherwise SHA-256(env). */
 function getKey(): Buffer {
-  const hex = process.env.ENCRYPTION_KEY;
-  if (!hex || hex.length !== 64) {
+  const raw = process.env.ENCRYPTION_KEY;
+  if (!raw || raw.length === 0) {
     throw new Error(
-      "ENCRYPTION_KEY must be a 64-character hex string (32 bytes)",
+      "ENCRYPTION_KEY must be set (64-character hex string or any string; non-hex is hashed to 32 bytes)",
     );
   }
-  return Buffer.from(hex, "hex");
+  const isStrictHex = raw.length === 64 && /^[0-9a-fA-F]+$/.test(raw);
+  const key = isStrictHex
+    ? Buffer.from(raw, "hex")
+    : createHash("sha256").update(raw, "utf8").digest();
+  if (key.length !== KEY_LENGTH) {
+    throw new Error(
+      `ENCRYPTION_KEY must yield 32 bytes (use 64 hex chars or any string); got ${key.length}`,
+    );
+  }
+  return key;
 }
 
 export function encrypt(plaintext: string): string {

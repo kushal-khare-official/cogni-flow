@@ -48,6 +48,9 @@ export async function executeWorkflow(
   }
 
   ctx.set(startNode.id, input);
+  // Alias start node output to "node-1" so {{node-1.*}} in body templates and input mapping resolve
+  // (workflows/demos often use node-1 for start regardless of actual node id)
+  ctx.set("node-1", input as Record<string, unknown>);
 
   let currentNodeId: string | null = startNode.id;
   let globalError: string | undefined;
@@ -327,6 +330,20 @@ async function executeIntegrationNode(
     }
   }
 
+  // Build default credential from integration schema so {{credential.*}} (e.g. credential.cogniflowUrl) always resolves
+  const credentialSchemaJson = integration.credentialSchema ?? "[]";
+  const credentialSchema = JSON.parse(credentialSchemaJson) as Array<{ key: string; default?: string }>;
+  const defaultCredential: Record<string, string> = {};
+  for (const field of credentialSchema) {
+    if (field.default !== undefined && field.default !== null) {
+      defaultCredential[field.key] = String(field.default);
+    }
+  }
+  const credentialForContext: Record<string, string> = { ...defaultCredential, ...(credential ?? {}) };
+  if (type === "http" || Object.keys(credentialForContext).length > 0) {
+    ctx.set("credential", credentialForContext);
+  }
+
   // Build resolved inputs from input mapping
   const resolvedInputs: Record<string, unknown> = {};
   if (inputMapping) {
@@ -342,9 +359,6 @@ async function executeIntegrationNode(
     }
   }
 
-  if (credential) {
-    ctx.set("credential", credential);
-  }
   ctx.set("_inputs", resolvedInputs);
 
   const effectiveMode: ExecutionMode =

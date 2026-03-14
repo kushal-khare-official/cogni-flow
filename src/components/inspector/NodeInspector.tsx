@@ -86,6 +86,26 @@ export function NodeInspector() {
     ? integrations.find((t) => t.id === data.integrationId)
     : undefined;
 
+  const operationId = data.operationId as string | undefined;
+  const resolvedOperation =
+    selectedIntegration && operationId
+      ? (() => {
+          try {
+            const ops = JSON.parse(selectedIntegration.operations ?? "[]") as Array<{
+              id: string;
+              name?: string;
+              method?: string;
+              path?: string;
+              bodyTemplate?: unknown;
+              inputSchema?: unknown[];
+            }>;
+            return ops.find((o) => o.id === operationId) ?? null;
+          } catch {
+            return null;
+          }
+        })()
+      : null;
+
   const integrationType = selectedIntegration?.type;
   const stepConfig = (data.stepConfig ?? {}) as Record<string, unknown>;
   const integrationBaseConfig = selectedIntegration
@@ -506,10 +526,16 @@ export function NodeInspector() {
                   <span className="font-medium text-zinc-600">{selectedIntegration.name}</span>
                   <span className="mx-1">·</span>
                   <Badge variant="outline" className="text-[9px]">{selectedIntegration.type}</Badge>
-                  {integrationType === "http" && (stepConfig.method || stepConfig.path) ? (
+                  {resolvedOperation?.name && (
                     <>
                       <span className="mx-1">·</span>
-                      <span className="font-mono">{(stepConfig.method as string) ?? "GET"} {(stepConfig.path as string) ?? "/"}</span>
+                      <span className="font-medium">{resolvedOperation.name}</span>
+                    </>
+                  )}
+                  {integrationType === "http" && (stepConfig.method || stepConfig.path || resolvedOperation?.method || resolvedOperation?.path) ? (
+                    <>
+                      <span className="mx-1">·</span>
+                      <span className="font-mono">{(stepConfig.method as string) ?? resolvedOperation?.method ?? "GET"} {(stepConfig.path as string) ?? resolvedOperation?.path ?? "/"}</span>
                     </>
                   ) : null}
                   {integrationType === "code" && (
@@ -532,11 +558,17 @@ export function NodeInspector() {
                   <>
                     <Separator />
                     <Label className="text-xs font-semibold text-zinc-600">Step config</Label>
+                    {resolvedOperation && (
+                      <p className="text-[10px] text-zinc-400 mb-1.5">
+                        Operation: <span className="font-medium text-zinc-600">{resolvedOperation.name}</span>
+                        {!stepConfig.method && !stepConfig.path && " (method/path from integration)"}
+                      </p>
+                    )}
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1">
                         <Label className="text-[11px] text-zinc-500">Method</Label>
                         <Select
-                          value={(stepConfig.method as string) ?? "GET"}
+                          value={(stepConfig.method as string) ?? resolvedOperation?.method ?? "GET"}
                           onValueChange={(v) => update({ stepConfig: { ...stepConfig, method: v } })}
                         >
                           <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
@@ -550,7 +582,7 @@ export function NodeInspector() {
                       <div className="space-y-1">
                         <Label className="text-[11px] text-zinc-500">Path</Label>
                         <Input
-                          value={(stepConfig.path as string) ?? ""}
+                          value={(stepConfig.path as string) ?? resolvedOperation?.path ?? ""}
                           onChange={(e) => update({ stepConfig: { ...stepConfig, path: e.target.value } })}
                           placeholder="/resource/{{id}}"
                           className="font-mono text-xs"
@@ -560,7 +592,7 @@ export function NodeInspector() {
                     <div className="space-y-1">
                       <Label className="text-[11px] text-zinc-500">Body template (JSON)</Label>
                       <Textarea
-                        value={typeof stepConfig.bodyTemplate === "string" ? stepConfig.bodyTemplate : (stepConfig.bodyTemplate ? JSON.stringify(stepConfig.bodyTemplate, null, 2) : "")}
+                        value={typeof stepConfig.bodyTemplate === "string" ? stepConfig.bodyTemplate : (stepConfig.bodyTemplate ? JSON.stringify(stepConfig.bodyTemplate, null, 2) : (resolvedOperation?.bodyTemplate ? JSON.stringify(resolvedOperation.bodyTemplate, null, 2) : ""))}
                         onChange={(e) => {
                           const raw = e.target.value.trim();
                           let bodyTemplate: unknown = undefined;

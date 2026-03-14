@@ -2,11 +2,63 @@
   "name": "Agent Onboarding Flow",
   "description": "Register an agent (KYA passport), create a mandate, test Stripe connection, log onboarding.",
   "nodes": [
-    { "id": "node-1", "type": "startEventNode", "position": { "x": 250, "y": 50 }, "data": { "label": "Start", "bpmnType": "startEvent" } },
-    { "id": "node-2", "type": "integrationNode", "position": { "x": 250, "y": 200 }, "data": { "label": "Register Agent", "bpmnType": "integration", "integrationTemplateId": "tpl-kya-passport", "operationId": "registerAgent" } },
-    { "id": "node-3", "type": "integrationNode", "position": { "x": 250, "y": 350 }, "data": { "label": "Create Mandate", "bpmnType": "integration", "integrationTemplateId": "tpl-kya-mandate", "operationId": "createMandate" } },
-    { "id": "node-4", "type": "integrationNode", "position": { "x": 250, "y": 500 }, "data": { "label": "Test Stripe (List Customers)", "bpmnType": "integration", "integrationTemplateId": "tpl-stripe", "operationId": "listCustomers" } },
-    { "id": "node-5", "type": "integrationNode", "position": { "x": 250, "y": 650 }, "data": { "label": "Log Onboarding", "bpmnType": "integration", "integrationTemplateId": "tpl-kya-monitor", "operationId": "logAudit" } },
+    { "id": "node-1", "type": "startEventNode", "position": { "x": 250, "y": 50 }, "data": { "label": "Start", "bpmnType": "startEvent", "requestBody": [{ "key": "name", "type": "string", "required": true, "description": "Agent name" }, { "key": "modelProvider", "type": "string", "required": true, "description": "Model provider (e.g. openai)" }, { "key": "modelVersion", "type": "string", "required": false, "description": "Model version (e.g. gpt-4)" }, { "key": "creatorName", "type": "string", "required": true, "description": "Creator name" }] } },
+    {
+      "id": "node-2",
+      "type": "integrationNode",
+      "position": { "x": 250, "y": 200 },
+      "data": {
+        "label": "Register Agent",
+        "bpmnType": "integration",
+        "integrationTemplateId": "tpl-kya-passport",
+        "operationId": "registerAgent",
+        "inputMapping": { "name": "{{node-1.name}}", "modelProvider": "{{node-1.modelProvider}}", "modelVersion": "{{node-1.modelVersion}}", "creatorName": "{{node-1.creatorName}}" },
+        "outputSchema": [{ "key": "id", "type": "string", "description": "Passport ID" }, { "key": "fingerprint", "type": "string" }, { "key": "status", "type": "string" }],
+        "stepConfig": { "method": "POST", "path": "/", "bodyTemplate": { "name": "{{name}}", "modelProvider": "{{modelProvider}}", "modelVersion": "{{modelVersion}}", "creatorName": "{{creatorName}}" } }
+      }
+    },
+    {
+      "id": "node-3",
+      "type": "integrationNode",
+      "position": { "x": 250, "y": 350 },
+      "data": {
+        "label": "Create Mandate",
+        "bpmnType": "integration",
+        "integrationTemplateId": "tpl-kya-mandate",
+        "operationId": "createMandate",
+        "inputMapping": { "passportId": "{{node-2.id}}", "description": "Onboarding mandate", "maxAmountCents": "5000", "maxTotalSpendCents": "50000" },
+        "outputSchema": [{ "key": "id", "type": "string", "description": "Mandate ID" }, { "key": "status", "type": "string" }],
+        "stepConfig": { "method": "POST", "path": "/{{passportId}}/mandate", "bodyTemplate": { "description": "{{description}}", "maxAmountCents": "{{maxAmountCents}}", "maxTotalSpendCents": "{{maxTotalSpendCents}}" } }
+      }
+    },
+    {
+      "id": "node-4",
+      "type": "integrationNode",
+      "position": { "x": 250, "y": 500 },
+      "data": {
+        "label": "Test Stripe (List Customers)",
+        "bpmnType": "integration",
+        "integrationTemplateId": "tpl-stripe",
+        "operationId": "listCustomers",
+        "inputMapping": { "limit": "10" },
+        "outputSchema": [{ "key": "data", "type": "object", "description": "Customer list" }, { "key": "has_more", "type": "boolean" }],
+        "stepConfig": { "method": "GET", "path": "/customers" }
+      }
+    },
+    {
+      "id": "node-5",
+      "type": "integrationNode",
+      "position": { "x": 250, "y": 650 },
+      "data": {
+        "label": "Log Onboarding",
+        "bpmnType": "integration",
+        "integrationTemplateId": "tpl-kya-monitor",
+        "operationId": "logAudit",
+        "inputMapping": { "passportId": "{{node-2.id}}", "action": "onboarding_complete", "amountCents": "0", "status": "success" },
+        "outputSchema": [{ "key": "id", "type": "string", "description": "Audit log ID" }],
+        "stepConfig": { "method": "POST", "path": "/{{passportId}}/audit", "bodyTemplate": { "action": "{{action}}", "amountCents": "{{amountCents}}", "status": "{{status}}" } }
+      }
+    },
     { "id": "node-6", "type": "endEventNode", "position": { "x": 250, "y": 800 }, "data": { "label": "End", "bpmnType": "endEvent" } }
   ],
   "edges": [
