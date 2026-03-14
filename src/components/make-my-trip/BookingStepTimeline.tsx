@@ -4,8 +4,9 @@ import { useEffect, useRef } from "react"
 import type { BookingExecutionStep, TravelIntegrationType } from "@/lib/travel/types"
 import {
   Plane, Hotel, Car, Bus, TrainFront,
-  Check, Loader2, Clock, AlertCircle, CreditCard, IndianRupee, ArrowDown,
+  Check, Loader2, Clock, AlertCircle, CreditCard, IndianRupee, ArrowDown, ShoppingCart,
 } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
 /* ── Per-type colors ─────────────────────────────────────────── */
 const TYPE_COLOR: Record<TravelIntegrationType, { accent: string; light: string; border: string; text: string }> = {
@@ -59,9 +60,11 @@ function paymentSubActive(s: BookingExecutionStep) {
 
 interface BookingStepTimelineProps {
   steps: BookingExecutionStep[]
+  onBookItem?: (bookingId: string) => void
+  busy?: boolean
 }
 
-export function BookingStepTimeline({ steps }: BookingStepTimelineProps) {
+export function BookingStepTimeline({ steps, onBookItem, busy = false }: BookingStepTimelineProps) {
   const activeRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -338,9 +341,23 @@ export function BookingStepTimeline({ steps }: BookingStepTimelineProps) {
                 )}
 
                 {/* ── Failed footer ── */}
-                {failed && step.message && (
-                  <div className="border-t border-red-100 bg-red-50 px-4 py-2">
-                    <p className="text-xs text-red-600">{step.message}</p>
+                {failed && (
+                  <div className="flex items-center gap-2 border-t border-red-100 bg-red-50 px-4 py-2">
+                    {step.message && (
+                      <p className="flex-1 text-xs text-red-600">{step.message}</p>
+                    )}
+                    {onBookItem && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busy}
+                        onClick={() => onBookItem(step.booking.id)}
+                        className="h-7 gap-1 rounded-lg border-red-200 px-2.5 text-xs font-semibold text-red-600 hover:bg-red-100"
+                      >
+                        <ShoppingCart className="size-3" />
+                        Retry
+                      </Button>
+                    )}
                   </div>
                 )}
 
@@ -348,7 +365,20 @@ export function BookingStepTimeline({ steps }: BookingStepTimelineProps) {
                 {pending && (
                   <div className="flex items-center gap-1.5 border-t border-slate-100 px-4 py-2">
                     <Clock className="size-3 text-slate-300" />
-                    <p className="text-xs text-slate-400">Waiting to start</p>
+                    <p className="flex-1 text-xs text-slate-400">Waiting to start</p>
+                    {onBookItem && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busy}
+                        onClick={() => onBookItem(step.booking.id)}
+                        className="h-7 gap-1 rounded-lg px-2.5 text-xs font-semibold"
+                        style={busy ? undefined : { borderColor: tc.border, color: tc.text }}
+                      >
+                        <ShoppingCart className="size-3" />
+                        Book
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>

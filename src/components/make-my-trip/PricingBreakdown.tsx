@@ -1,9 +1,10 @@
 "use client"
 
 import type { TravelPlanOutput } from "@/lib/travel/schema"
-import type { TravelIntegrationType } from "@/lib/travel/types"
-import { Plane, Hotel, Car, Bus, TrainFront, IndianRupee, ChevronDown, ChevronRight } from "lucide-react"
+import type { BookingExecutionStep, TravelIntegrationType } from "@/lib/travel/types"
+import { Plane, Hotel, Car, Bus, TrainFront, IndianRupee, ChevronDown, ChevronRight, Loader2, Check, ShoppingCart } from "lucide-react"
 import { useState } from "react"
+import { Button } from "@/components/ui/button"
 
 const TYPE_ICON: Record<TravelIntegrationType, React.ElementType> = {
   flight: Plane,
@@ -51,11 +52,76 @@ function fmtINR(n: number) {
   return `₹${n.toLocaleString("en-IN")}`
 }
 
-interface PricingBreakdownProps {
-  plan: TravelPlanOutput
+type ItemStatus = "pending" | "active" | "done" | "failed"
+
+function getItemStatus(bookingId: string, steps: BookingExecutionStep[]): ItemStatus {
+  const step = steps.find((s) => s.booking.id === bookingId)
+  if (!step) return "pending"
+  if (step.status === "paymentDone") return "done"
+  if (step.status === "failed") return "failed"
+  if (step.status === "pending") return "pending"
+  return "active"
 }
 
-export function PricingBreakdown({ plan }: PricingBreakdownProps) {
+function ItemBookButton({
+  status,
+  busy,
+  color,
+  onClick,
+}: {
+  status: ItemStatus
+  busy: boolean
+  color: { accent: string; light: string; border: string; text: string }
+  onClick: (e: React.MouseEvent) => void
+}) {
+  if (status === "done") {
+    return (
+      <span
+        className="flex size-7 shrink-0 items-center justify-center rounded-lg"
+        style={{ backgroundColor: "#f0fdf4", border: "1.5px solid #a7f3d0" }}
+      >
+        <Check className="size-3.5 text-green-600" />
+      </span>
+    )
+  }
+
+  if (status === "active") {
+    return (
+      <span
+        className="flex size-7 shrink-0 items-center justify-center rounded-lg"
+        style={{ backgroundColor: color.light, border: `1.5px solid ${color.border}` }}
+      >
+        <Loader2 className="size-3.5 animate-spin" style={{ color: color.accent }} />
+      </span>
+    )
+  }
+
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      disabled={busy}
+      onClick={onClick}
+      className="h-7 gap-1 rounded-lg px-2.5 text-xs font-semibold"
+      style={{
+        borderColor: busy ? undefined : color.border,
+        color: busy ? undefined : color.text,
+      }}
+    >
+      <ShoppingCart className="size-3" />
+      Book
+    </Button>
+  )
+}
+
+interface PricingBreakdownProps {
+  plan: TravelPlanOutput
+  steps?: BookingExecutionStep[]
+  onBookItem?: (bookingId: string) => void
+  busy?: boolean
+}
+
+export function PricingBreakdown({ plan, steps = [], onBookItem, busy = false }: PricingBreakdownProps) {
   /* Group bookings by integration type */
   const groupMap = new Map<TravelIntegrationType, { id: string; title: string; estimated: number }[]>()
 
@@ -114,6 +180,8 @@ export function PricingBreakdown({ plan }: PricingBreakdownProps) {
           const open = expanded.has(type)
           const count = items.length
 
+          const singleItemStatus = count === 1 ? getItemStatus(items[0].id, steps) : null
+
           return (
             <div key={type}>
               {/* Group header row — clickable to expand */}
@@ -143,13 +211,23 @@ export function PricingBreakdown({ plan }: PricingBreakdownProps) {
                   )}
                 </div>
 
+                {/* Book button for single-item groups */}
+                {onBookItem && count === 1 && (
+                  <ItemBookButton
+                    status={singleItemStatus!}
+                    busy={busy}
+                    color={color}
+                    onClick={(e) => { e.stopPropagation(); onBookItem(items[0].id) }}
+                  />
+                )}
+
                 {/* Expand chevron — only show when count > 1 */}
                 {count > 1 ? (
                   open
                     ? <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
                     : <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
                 ) : (
-                  <span className="size-4 shrink-0" />
+                  !onBookItem && <span className="size-4 shrink-0" />
                 )}
               </button>
 
@@ -159,13 +237,24 @@ export function PricingBreakdown({ plan }: PricingBreakdownProps) {
                   className="divide-y"
                   style={{ backgroundColor: color.light, borderTop: `1px solid ${color.border}`, borderBottom: `1px solid ${color.border}` }}
                 >
-                  {items.map((item, i) => (
-                    <div key={item.id} className="flex items-center gap-3 px-6 py-2.5">
-                      <span className="w-4 text-right text-xs text-muted-foreground">{i + 1}.</span>
-                      <p className="flex-1 text-xs font-medium text-foreground">{item.title}</p>
-                      <p className="text-xs font-semibold" style={{ color: color.text }}>{fmtINR(item.estimated)}</p>
-                    </div>
-                  ))}
+                  {items.map((item, i) => {
+                    const status = getItemStatus(item.id, steps)
+                    return (
+                      <div key={item.id} className="flex items-center gap-3 px-6 py-2.5">
+                        <span className="w-4 text-right text-xs text-muted-foreground">{i + 1}.</span>
+                        <p className="flex-1 text-xs font-medium text-foreground">{item.title}</p>
+                        <p className="text-xs font-semibold" style={{ color: color.text }}>{fmtINR(item.estimated)}</p>
+                        {onBookItem && (
+                          <ItemBookButton
+                            status={status}
+                            busy={busy}
+                            color={color}
+                            onClick={() => onBookItem(item.id)}
+                          />
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>

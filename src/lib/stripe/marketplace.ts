@@ -5,15 +5,23 @@
  */
 import { getStripe } from "@/lib/acp/stripe";
 
-/** Events required for ACP seller: PaymentIntent and SPT lifecycle */
+/**
+ * Webhook events for payment and ACP. Start with PaymentIntent only so registration
+ * works on all Stripe accounts. shared_payment.* / data_management.* may require
+ * Agentic Commerce or catalog to be enabled; add them in Dashboard if needed.
+ */
 export const ACP_WEBHOOK_EVENTS = [
   "payment_intent.succeeded",
   "payment_intent.payment_failed",
+] as const;
+
+/** Optional: SPT lifecycle (add in Dashboard if your account supports shared_payment.*) */
+export const ACP_SPT_EVENTS = [
   "shared_payment.granted_token.used",
   "shared_payment.granted_token.deactivated",
 ] as const;
 
-/** Optional: catalog import status (if using product catalog upload) */
+/** Optional: catalog import status (add in Dashboard if using product catalog upload) */
 export const CATALOG_WEBHOOK_EVENTS = [
   "data_management.import_set.succeeded",
   "data_management.import_set.failed",

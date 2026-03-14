@@ -152,11 +152,11 @@ Use these integration template IDs for agent onboarding and guardrails (set inte
 - **tpl-stripe** — Payments: createPaymentIntent, retrievePaymentIntent, listCustomers, createCharge, createRefund, createPaymentLink, createProduct, createPrice
 - **tpl-stripe-issuing** — Virtual Cards: createCardholder, createVirtualCard, getCard, cancelCard
 - **tpl-stripe-billing** — Billing: createMeterEvent, createSubscription, createInvoice, listInvoices
-- **tpl-stripe-agent-toolkit** — Agent Toolkit: createPaymentIntent, confirmPaymentIntent (with sharedPaymentGrantedToken for Stripe ACP — agent pays on behalf of user), retrievePaymentIntent, createRefund, createPaymentLink, createProduct, createPrice, listCustomers, listPrices
+- **tpl-stripe-agent-toolkit** — Agent Toolkit: createPaymentIntent, confirmPaymentIntent (with sharedPaymentGrantedToken for Stripe ACP — agent pays on behalf of user), createSharedPaymentToken (test helper: create SPT for testing), retrievePaymentIntent, createRefund, createPaymentLink, createProduct, createPrice, listCustomers, listPrices
 
 ## Agent pays on behalf of user (Stripe ACP)
 
-To have the agent complete payment on behalf of the user using Stripe's Agentic Commerce Protocol (ACP), use two steps: (1) createPaymentIntent (amount, currency); (2) confirmPaymentIntent with paymentIntentId from the previous step and sharedPaymentGrantedToken from workflow input (the SPT is provisioned when the user authorizes the agent in the ACP flow). The SPT can be supplied via workflow trigger input or an ACP Complete Checkout request.
+To have the agent complete payment on behalf of the user using Stripe's Agentic Commerce Protocol (ACP), use two steps: (1) createPaymentIntent (amount, currency); (2) confirmPaymentIntent with paymentIntentId from the previous step and sharedPaymentGrantedToken from workflow input (the SPT is provisioned when the user authorizes the agent in the ACP flow). The SPT can be supplied via workflow trigger input or an ACP Complete Checkout request. For testing without a real checkout, use createSharedPaymentToken (Stripe test helper) first to create an SPT, then createPaymentIntent and confirmPaymentIntent with that token.
 
 ## Agentic Payment Workflow Composition
 

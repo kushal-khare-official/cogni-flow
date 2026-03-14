@@ -1,5 +1,6 @@
 import agentOnboarding from "./agent-onboarding.json";
 import agenticPayment from "./agentic-payment.json";
+import sharedPaymentToken from "./shared-payment-token.json";
 import virtualCardBudget from "./virtual-card-budget.json";
 import meteredBilling from "./metered-billing.json";
 
@@ -39,6 +40,14 @@ export const DEMOS: DemoWorkflow[] = [
     nodes: (agenticPayment as { nodes: unknown[] }).nodes,
     edges: (agenticPayment as { edges: unknown[] }).edges,
     requiredIntegrationIds: getRequiredIntegrationIds((agenticPayment as { nodes: unknown[] }).nodes),
+  },
+  {
+    id: "shared-payment-token",
+    name: (sharedPaymentToken as { name: string }).name,
+    description: (sharedPaymentToken as { description: string }).description,
+    nodes: (sharedPaymentToken as { nodes: unknown[] }).nodes,
+    edges: (sharedPaymentToken as { edges: unknown[] }).edges,
+    requiredIntegrationIds: getRequiredIntegrationIds((sharedPaymentToken as { nodes: unknown[] }).nodes),
   },
   {
     id: "virtual-card-budget",

@@ -16,6 +16,7 @@ export const STRIPE_AGENT_OPERATIONS = [
   "createPaymentIntent",
   "confirmPaymentIntent",
   "retrievePaymentIntent",
+  "createSharedPaymentToken",
   "listCustomers",
   "createRefund",
   "createPaymentLink",

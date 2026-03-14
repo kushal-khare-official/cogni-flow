@@ -8,7 +8,10 @@
     "postinstall": "prisma generate",
     "start": "next start",
     "lint": "eslint",
+    "db:push": "prisma db push",
+    "db:migrate:deploy": "prisma migrate deploy",
     "db:seed": "npx tsx prisma/seed.ts",
+    "db:push-workflows": "npx tsx scripts/push-workflows-to-prod.ts",
     "stripe:register": "npx tsx scripts/stripe-marketplace-register.ts"
   },
   "prisma": {

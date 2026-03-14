@@ -138,6 +138,57 @@ export async function executeStripeAgent(
       return { data: list.data, has_more: list.has_more };
     }
 
+    case "createSharedPaymentToken": {
+      // Stripe test helper: creates a shared payment token (SPT) for testing ACP flows.
+      // Uses raw API; test-mode only. See: https://docs.stripe.com/agentic-commerce/testing
+      const paymentMethod = String(
+        resolvedInputs.payment_method ?? resolvedInputs.paymentMethod ?? "pm_card_visa",
+      );
+      const currency = String(resolvedInputs.currency ?? "usd");
+      const maxAmount = Number(resolvedInputs.max_amount ?? resolvedInputs.maxAmount ?? 10000);
+      const expiresAt = Number(
+        resolvedInputs.expires_at ?? resolvedInputs.expiresAt ?? Math.floor(Date.now() / 1000) + 86400 * 30,
+      );
+      const networkId = String(resolvedInputs.network_id ?? resolvedInputs.networkId ?? "internal");
+      const externalId = String(
+        resolvedInputs.external_id ?? resolvedInputs.externalId ?? `workflow-${Date.now()}`,
+      );
+      const body = new URLSearchParams({
+        payment_method: paymentMethod,
+        "usage_limits[currency]": currency,
+        "usage_limits[max_amount]": String(maxAmount),
+        "usage_limits[expires_at]": String(expiresAt),
+        "seller_details[network_id]": networkId,
+        "seller_details[external_id]": externalId,
+      });
+      const res = await fetch("https://api.stripe.com/v1/test_helpers/shared_payment/granted_tokens", {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${Buffer.from(`${apiKey}:`).toString("base64")}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+        },
+        body: body.toString(),
+      });
+      const raw = await res.text();
+      if (!res.ok) {
+        throw new Error(`Stripe test helper createSharedPaymentToken failed: ${res.status} ${raw}`);
+      }
+      let data: { id: string; object?: string };
+      const ct = res.headers.get("content-type") ?? "";
+      if (ct.includes("application/json")) {
+        data = JSON.parse(raw) as { id: string; object?: string };
+      } else {
+        const params = new URLSearchParams(raw);
+        data = { id: params.get("id") ?? "" };
+      }
+      return {
+        id: data.id,
+        object: data.object,
+        sharedPaymentGrantedToken: data.id,
+      };
+    }
+
     default:
       throw new Error(`Unknown stripe_agent operation: ${operationId}`);
   }

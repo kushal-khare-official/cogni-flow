@@ -295,10 +295,11 @@ export const BUILT_IN_INTEGRATIONS = [
     category: "payments",
     type: "stripe_agent",
     description: "Execute Stripe actions via the agent toolkit (payment intents, refunds, payment links, products) for agentic payment workflows.",
-    baseConfig: JSON.stringify({ allowedActions: ["createPaymentIntent", "confirmPaymentIntent", "retrievePaymentIntent", "createRefund", "createPaymentLink", "createProduct", "createPrice", "listCustomers", "listPrices"] }),
+    baseConfig: JSON.stringify({ allowedActions: ["createPaymentIntent", "confirmPaymentIntent", "retrievePaymentIntent", "createSharedPaymentToken", "createRefund", "createPaymentLink", "createProduct", "createPrice", "listCustomers", "listPrices"] }),
     operations: JSON.stringify([
       { id: "createPaymentIntent", name: "Create Payment Intent", inputSchema: [{ key: "amount", type: "number", required: true }, { key: "currency", type: "string", required: true, default: "usd" }] },
       { id: "confirmPaymentIntent", name: "Confirm Payment Intent (with SPT)", inputSchema: [{ key: "paymentIntentId", type: "string", required: true, description: "PaymentIntent ID from createPaymentIntent" }, { key: "sharedPaymentGrantedToken", type: "string", required: true, description: "Shared Payment Token from Stripe ACP (agent pays on behalf of user)" }] },
+      { id: "createSharedPaymentToken", name: "Create Shared Payment Token (test helper)", inputSchema: [{ key: "payment_method", type: "string", required: false, default: "pm_card_visa", description: "Test payment method ID" }, { key: "currency", type: "string", required: false, default: "usd" }, { key: "max_amount", type: "number", required: false, default: 10000, description: "Max amount in cents" }, { key: "expires_at", type: "number", required: false, description: "Unix timestamp when token expires" }, { key: "network_id", type: "string", required: false, default: "internal" }, { key: "external_id", type: "string", required: false, description: "Seller external id (any string)" }] },
       { id: "retrievePaymentIntent", name: "Retrieve Payment Intent", inputSchema: [{ key: "paymentIntentId", type: "string", required: true }] },
       { id: "listCustomers", name: "List Customers", inputSchema: [{ key: "limit", type: "number", required: false, default: 10 }] },
       { id: "createRefund", name: "Create Refund", inputSchema: [{ key: "payment_intent", type: "string", required: true }, { key: "amount", type: "number", required: false }, { key: "reason", type: "string", required: false }] },
@@ -313,6 +314,7 @@ export const BUILT_IN_INTEGRATIONS = [
       perOperation: {
         createPaymentIntent: { id: "pi_mock_123", status: "requires_payment_method", client_secret: "pi_mock_secret" },
         confirmPaymentIntent: { id: "pi_mock_123", status: "succeeded", amount: 1000 },
+        createSharedPaymentToken: { id: "spt_mock_123", sharedPaymentGrantedToken: "spt_mock_123" },
         retrievePaymentIntent: { id: "pi_mock_123", status: "succeeded", amount: 1000 },
         listCustomers: { data: [], has_more: false },
         createRefund: { id: "re_mock_123", status: "succeeded" },

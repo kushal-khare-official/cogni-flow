@@ -1,0 +1,88 @@
+{
+  "name": "Create Shared Payment Token & Pay",
+  "description": "Create a shared payment token (SPT) via Stripe test helper, then create and confirm a payment intent using that token. Demonstrates the full ACP test flow without a real checkout.",
+  "nodes": [
+    {
+      "id": "node-1",
+      "type": "startEventNode",
+      "position": { "x": 250, "y": 50 },
+      "data": {
+        "label": "Start",
+        "bpmnType": "startEvent",
+        "requestBody": [
+          { "key": "paymentMethod", "type": "string", "required": false, "description": "Test PM (default pm_card_visa)" },
+          { "key": "amountCents", "type": "number", "required": false, "description": "Payment amount in cents (default 1000)" }
+        ]
+      }
+    },
+    {
+      "id": "node-2",
+      "type": "integrationNode",
+      "position": { "x": 250, "y": 200 },
+      "data": {
+        "label": "Create Shared Payment Token",
+        "bpmnType": "integration",
+        "integrationTemplateId": "tpl-stripe-agent-toolkit",
+        "operationId": "createSharedPaymentToken",
+        "inputMapping": {
+          "max_amount": "10000",
+          "currency": "usd"
+        },
+        "outputMapping": { "sharedPaymentGrantedToken": "sharedPaymentGrantedToken", "id": "id" },
+        "outputSchema": [
+          { "key": "id", "type": "string" },
+          { "key": "sharedPaymentGrantedToken", "type": "string" }
+        ],
+        "stepConfig": {}
+      }
+    },
+    {
+      "id": "node-3",
+      "type": "integrationNode",
+      "position": { "x": 250, "y": 350 },
+      "data": {
+        "label": "Create Payment Intent",
+        "bpmnType": "integration",
+        "integrationTemplateId": "tpl-stripe-agent-toolkit",
+        "operationId": "createPaymentIntent",
+        "inputMapping": { "amount": "1000", "currency": "usd" },
+        "outputMapping": { "id": "id", "status": "status", "client_secret": "client_secret" },
+        "outputSchema": [
+          { "key": "id", "type": "string" },
+          { "key": "status", "type": "string" },
+          { "key": "client_secret", "type": "string" }
+        ],
+        "stepConfig": {}
+      }
+    },
+    {
+      "id": "node-4",
+      "type": "integrationNode",
+      "position": { "x": 250, "y": 500 },
+      "data": {
+        "label": "Confirm Payment Intent (with SPT)",
+        "bpmnType": "integration",
+        "integrationTemplateId": "tpl-stripe-agent-toolkit",
+        "operationId": "confirmPaymentIntent",
+        "inputMapping": {
+          "paymentIntentId": "{{node-3.id}}",
+          "sharedPaymentGrantedToken": "{{node-2.sharedPaymentGrantedToken}}"
+        },
+        "outputMapping": { "id": "id", "status": "status", "amount": "amount" },
+        "outputSchema": [
+          { "key": "id", "type": "string" },
+          { "key": "status", "type": "string" },
+          { "key": "amount", "type": "number" }
+        ],
+        "stepConfig": {}
+      }
+    },
+    { "id": "node-5", "type": "endEventNode", "position": { "x": 250, "y": 650 }, "data": { "label": "Success", "bpmnType": "endEvent" } }
+  ],
+  "edges": [
+    { "id": "e-node-1-node-2", "source": "node-1", "target": "node-2", "type": "conditional", "data": {} },
+    { "id": "e-node-2-node-3", "source": "node-2", "target": "node-3", "type": "conditional", "data": {} },
+    { "id": "e-node-3-node-4", "source": "node-3", "target": "node-4", "type": "conditional", "data": {} },
+    { "id": "e-node-4-node-5", "source": "node-4", "target": "node-5", "type": "conditional", "data": {} }
+  ]
+}

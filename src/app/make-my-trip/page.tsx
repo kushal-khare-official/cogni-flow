@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { TripPromptForm } from "@/components/make-my-trip/TripPromptForm"
 import { BookingStepTimeline } from "@/components/make-my-trip/BookingStepTimeline"
@@ -9,6 +9,8 @@ import { DayWisePlan } from "@/components/make-my-trip/DayWisePlan"
 import { PricingBreakdown } from "@/components/make-my-trip/PricingBreakdown"
 import type { TravelPlanOutput, TravelBookingInput } from "@/lib/travel/schema"
 import type { BookingExecutionStep } from "@/lib/travel/types"
+import { PaymentAgentOnboardDialog } from "@/components/make-my-trip/PaymentAgentOnboardDialog"
+import { OnboardedAgentsDialog } from "@/components/make-my-trip/OnboardedAgentsDialog"
 import {
   Compass,
   PlayCircle,
@@ -55,11 +57,12 @@ interface ProcessBannerProps {
   plan: TravelPlanOutput | null
   steps: BookingExecutionStep[]
   running: boolean
+  busy: boolean
   completed: number
   onRun: () => void
 }
 
-function ProcessBanner({ plan, steps, running, completed, onRun }: ProcessBannerProps) {
+function ProcessBanner({ plan, steps, running, busy, completed, onRun }: ProcessBannerProps) {
   if (!plan) return null
 
   const total = steps.length
@@ -127,6 +130,8 @@ function ProcessBanner({ plan, steps, running, completed, onRun }: ProcessBanner
     )
   }
 
+  const pending = steps.filter((s) => s.status === "pending" || s.status === "failed").length
+
   return (
     <div
       className="flex flex-wrap items-center justify-between gap-4 rounded-xl border px-5 py-4"
@@ -144,19 +149,28 @@ function ProcessBanner({ plan, steps, running, completed, onRun }: ProcessBanner
           <CalendarCheck className="size-5 text-white" />
         </div>
         <div>
-          <p className="text-sm font-semibold text-foreground">Ready to process {total} bookings</p>
+          <p className="text-sm font-semibold text-foreground">
+            {completed > 0
+              ? `${pending} remaining booking${pending !== 1 ? "s" : ""}`
+              : `Ready to process ${total} bookings`}
+          </p>
           <p className="text-xs text-muted-foreground">
-            Review the pricing above, then click to start booking.
+            Book all at once, or pick individual items from the pricing breakdown above.
           </p>
         </div>
       </div>
       <Button
         onClick={onRun}
+        disabled={busy || pending === 0}
         className="gap-2 px-5"
-        style={{ background: "linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)" }}
+        style={
+          busy || pending === 0
+            ? undefined
+            : { background: "linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)" }
+        }
       >
         <PlayCircle className="size-4" />
-        Process Bookings
+        {completed > 0 ? "Book Remaining" : "Book All"}
       </Button>
     </div>
   )
@@ -167,6 +181,7 @@ function ProcessBanner({ plan, steps, running, completed, onRun }: ProcessBanner
 export default function MakeMyTripPage() {
   const [loadingPlan, setLoadingPlan] = useState(false)
   const [runningFlow, setRunningFlow] = useState(false)
+  const [bookingItemId, setBookingItemId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [plan, setPlan] = useState<TravelPlanOutput | null>(null)
   const [steps, setSteps] = useState<BookingExecutionStep[]>([])
@@ -175,6 +190,8 @@ export default function MakeMyTripPage() {
     () => steps.filter((step) => step.status === "paymentDone").length,
     [steps],
   )
+
+  const anyBusy = runningFlow || bookingItemId !== null
 
   const allDone = completedBookings === steps.length && steps.length > 0
 
@@ -219,6 +236,7 @@ export default function MakeMyTripPage() {
 
     try {
       for (let index = 0; index < plan.bookings.length; index++) {
+        if (steps[index].status === "paymentDone") continue
         const booking: TravelBookingInput = plan.bookings[index]
         const bookingApiPath = getBookingApiPath(booking.type)
 
@@ -321,6 +339,99 @@ export default function MakeMyTripPage() {
     }
   }
 
+  const runSingleBooking = useCallback(async (bookingId: string) => {
+    if (!plan) return
+    const index = steps.findIndex((s) => s.booking.id === bookingId)
+    if (index < 0) return
+    const step = steps[index]
+    if (step.status !== "pending" && step.status !== "failed") return
+
+    setBookingItemId(bookingId)
+    setError(null)
+
+    try {
+      const booking: TravelBookingInput = plan.bookings[index]
+      const bookingApiPath = getBookingApiPath(booking.type)
+
+      updateStep(index, (s) => ({
+        ...s,
+        status: "bookingQueued",
+        bookingApi: bookingApiPath,
+        paymentApi: "/api/travel/mock/dummy-payment",
+        message: "Booking queued.",
+      }))
+      await sleep(350)
+
+      updateStep(index, (s) => ({
+        ...s,
+        status: "bookingInProgress",
+        message: `Calling ${bookingApiPath}…`,
+      }))
+
+      const response = await fetch(bookingApiPath, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ booking }),
+      })
+      const data = (await response.json()) as BookApiResponse | { error: string }
+
+      if (!response.ok || "error" in data) {
+        throw new Error("error" in data ? data.error : `Booking failed for ${booking.type}`)
+      }
+
+      updateStep(index, (s) => ({
+        ...s,
+        status: "bookingDone",
+        bookingReference: data.bookingReference,
+        estimatedCost: data.estimatedCost,
+        message: data.message,
+      }))
+      await sleep(450)
+
+      updateStep(index, (s) => ({ ...s, status: "paymentQueued", message: "Payment queued." }))
+      await sleep(300)
+
+      updateStep(index, (s) => ({
+        ...s,
+        status: "paymentInProgress",
+        message: "Calling /api/travel/mock/dummy-payment…",
+      }))
+
+      const paymentResponse = await fetch("/api/travel/mock/dummy-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bookingReference: data.bookingReference,
+          amount: data.estimatedCost,
+        }),
+      })
+      const paymentData = (await paymentResponse.json()) as PaymentApiResponse | { error: string }
+
+      if (!paymentResponse.ok || "error" in paymentData) {
+        throw new Error(
+          "error" in paymentData ? paymentData.error : `Payment failed for ${booking.type}`,
+        )
+      }
+
+      updateStep(index, (s) => ({
+        ...s,
+        status: "paymentDone",
+        paymentReference: paymentData.paymentReference,
+        amountPaid: paymentData.amountPaid,
+        message: paymentData.message,
+      }))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Booking failed")
+      updateStep(index, (s) => ({
+        ...s,
+        status: "failed",
+        message: "Step failed during execution.",
+      }))
+    } finally {
+      setBookingItemId(null)
+    }
+  }, [plan, steps])
+
   return (
     <main className="min-h-screen bg-background px-4 py-6">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
@@ -341,20 +452,23 @@ export default function MakeMyTripPage() {
             <p className="text-xs text-muted-foreground">AI-powered travel booking agent</p>
           </div>
 
-          {/* Trip info pill — appears after plan */}
-          {plan && (
-            <div className="ml-auto flex flex-wrap items-center gap-2">
-              <span
-                className="rounded-full px-3 py-1 text-xs font-semibold text-white"
-                style={{ background: "linear-gradient(135deg, #3b82f6, #6366f1)" }}
-              >
-                {plan.intent.from} → {plan.intent.to}
-              </span>
-              <span className="rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground">
-                {plan.intent.travelDays}d · {plan.bookings.length} bookings
-              </span>
-            </div>
-          )}
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <OnboardedAgentsDialog />
+            <PaymentAgentOnboardDialog />
+            {plan && (
+              <>
+                <span
+                  className="rounded-full px-3 py-1 text-xs font-semibold text-white"
+                  style={{ background: "linear-gradient(135deg, #3b82f6, #6366f1)" }}
+                >
+                  {plan.intent.from} → {plan.intent.to}
+                </span>
+                <span className="rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground">
+                  {plan.intent.travelDays}d · {plan.bookings.length} bookings
+                </span>
+              </>
+            )}
+          </div>
         </header>
 
         {/* ── Error banner ── */}
@@ -374,9 +488,14 @@ export default function MakeMyTripPage() {
         {/* ── Day-wise Itinerary (full width) ── */}
         <DayWisePlan plan={plan} />
 
-        {/* ── Pricing Breakdown (shown after plan, before process) ── */}
-        {plan && !runningFlow && !allDone && (
-          <PricingBreakdown plan={plan} />
+        {/* ── Pricing Breakdown (shown after plan, hidden once all done) ── */}
+        {plan && !allDone && (
+          <PricingBreakdown
+            plan={plan}
+            steps={steps}
+            onBookItem={runSingleBooking}
+            busy={anyBusy}
+          />
         )}
 
         {/* ── Process banner ── */}
@@ -384,6 +503,7 @@ export default function MakeMyTripPage() {
           plan={plan}
           steps={steps}
           running={runningFlow}
+          busy={anyBusy}
           completed={completedBookings}
           onRun={runFlow}
         />
@@ -401,7 +521,7 @@ export default function MakeMyTripPage() {
                 {completedBookings}/{steps.length} completed
               </span>
             </div>
-            <BookingStepTimeline steps={steps} />
+            <BookingStepTimeline steps={steps} onBookItem={runSingleBooking} busy={anyBusy} />
           </section>
         )}
 
