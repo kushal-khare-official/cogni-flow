@@ -2,13 +2,14 @@
 
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { Play } from "lucide-react";
+import { Play, Globe } from "lucide-react";
 import type { BpmnNode } from "@/lib/workflow/types";
 import { cn } from "@/lib/utils";
 import { ExecutionStatusOverlay } from "./ExecutionStatusOverlay";
 
 function StartEventNodeComponent({ data, selected }: NodeProps<BpmnNode>) {
   const status = data.executionStatus;
+  const hasRestApi = Array.isArray(data.requestBody) && data.requestBody.length > 0;
   return (
     <div className="flex flex-col items-center gap-1">
       <div
@@ -21,10 +22,18 @@ function StartEventNodeComponent({ data, selected }: NodeProps<BpmnNode>) {
       >
         <Play className="h-6 w-6 fill-emerald-600 text-emerald-600" />
         <ExecutionStatusOverlay data={data} />
+        {hasRestApi && (
+          <div className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-blue-500 shadow-sm">
+            <Globe className="h-3 w-3 text-white" />
+          </div>
+        )}
       </div>
       <span className="max-w-24 truncate text-center text-xs font-medium text-slate-700">
         {data.label}
       </span>
+      {hasRestApi && (
+        <span className="text-[9px] font-medium text-blue-500">REST API</span>
+      )}
       <Handle
         type="source"
         position={Position.Bottom}
