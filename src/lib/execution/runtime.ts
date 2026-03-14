@@ -21,7 +21,7 @@ const GATEWAY_TYPES = new Set([
 
 export interface ExecutionCallbacks {
   onNodeStart?: (nodeId: string) => void;
-  onNodeComplete?: (nodeId: string, output: Record<string, unknown>) => void;
+  onNodeComplete?: (nodeId: string, output: Record<string, unknown>, input?: Record<string, unknown>) => void;
   onNodeError?: (nodeId: string, error: string) => void;
 }
 
@@ -81,7 +81,7 @@ export async function executeWorkflow(
           duration: Date.now() - startTime,
         });
         ctx.set(currentNodeId, output);
-        callbacks?.onNodeComplete?.(currentNodeId, output);
+        callbacks?.onNodeComplete?.(currentNodeId, output, gatherInputs(currentNodeId, edges, ctx));
 
         const webhookUrl = node.data.webhookUrl as string | undefined;
         if (webhookUrl) {
@@ -114,7 +114,8 @@ export async function executeWorkflow(
       if (isStartOrWebhook) {
         ctx.set("node-1", output as Record<string, unknown>);
       }
-      callbacks?.onNodeComplete?.(currentNodeId, output);
+      const nodeInput = gatherInputs(currentNodeId, edges, ctx);
+      callbacks?.onNodeComplete?.(currentNodeId, output, nodeInput);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       callbacks?.onNodeError?.(currentNodeId, errorMsg);
@@ -131,7 +132,7 @@ export async function executeWorkflow(
               output = await executeIntegrationNode(node, ctx, mode);
             }
             ctx.set(currentNodeId, output);
-            callbacks?.onNodeComplete?.(currentNodeId, output);
+            callbacks?.onNodeComplete?.(currentNodeId, output, gatherInputs(currentNodeId, edges, ctx));
             retried = true;
             break;
           } catch {
@@ -366,8 +367,12 @@ async function executeIntegrationNode(
 
   ctx.set("_inputs", resolvedInputs);
 
+  // Use live when: webhook (always), or user asked for live and we have either a stored credential
+  // or for HTTP we have defaultCredential (e.g. cogniflowUrl) so baseUrl resolves and we can call the API
+  const canRunLiveHttp =
+    type === "http" && mode === "live" && Object.keys(credentialForContext).length > 0;
   const effectiveMode: ExecutionMode =
-    type === "webhook" ? "live" : mode === "live" && credential ? "live" : "mock";
+    type === "webhook" ? "live" : mode === "live" && (credential || canRunLiveHttp) ? "live" : "mock";
 
   const stripeAgentParams =
     type === "stripe_agent" && credential
@@ -414,6 +419,6 @@ async function executeIntegrationNode(
     } : undefined,
     stripeAgentParams,
     mockConfig,
-    operationId: "default",
+    operationId: operation?.id ?? operationIdFromNode ?? "default",
   }, ctx);
 }

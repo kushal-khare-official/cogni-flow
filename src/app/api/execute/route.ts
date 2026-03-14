@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { executeWorkflow } from "@/lib/execution/runtime";
+import { getBuiltInIntegrationsByIds } from "@/lib/integrations/built-in";
 import type { BpmnNode, BpmnEdge } from "@/lib/workflow/types";
 
 export async function POST(request: NextRequest) {
@@ -11,6 +12,17 @@ export async function POST(request: NextRequest) {
 
   const nodes = JSON.parse(workflow.nodes) as BpmnNode[];
   const edges = JSON.parse(workflow.edges) as BpmnEdge[];
+
+  // Ensure built-in integrations exist so nodes with integrationTemplateId (e.g. tpl-kya-passport) resolve
+  const integrationIds = [...new Set(nodes.map((n) => (n.data?.integrationId ?? n.data?.integrationTemplateId) as string).filter(Boolean))];
+  const toUpsert = getBuiltInIntegrationsByIds(integrationIds);
+  for (const integration of toUpsert) {
+    await prisma.integration.upsert({
+      where: { id: integration.id },
+      update: { ...integration },
+      create: { ...integration },
+    });
+  }
 
   const run = await prisma.executionRun.create({
     data: { workflowId, trigger: "manual", status: "running", input: JSON.stringify(input ?? {}) }
@@ -28,7 +40,7 @@ export async function POST(request: NextRequest) {
 
         const result = await executeWorkflow(workflowId, nodes, edges, input ?? {}, mode ?? "live", {
           onNodeStart: (nodeId) => send("node_start", { nodeId }),
-          onNodeComplete: (nodeId, output) => send("node_complete", { nodeId, output }),
+          onNodeComplete: (nodeId, output, nodeInput) => send("node_complete", { nodeId, output, input: nodeInput }),
           onNodeError: (nodeId, error) => send("node_error", { nodeId, error }),
         });
 

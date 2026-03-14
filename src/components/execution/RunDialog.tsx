@@ -47,7 +47,7 @@ export function RunDialog() {
     setOpen(false);
 
     nodes.forEach((n) => {
-      updateNodeData(n.id, { executionStatus: "idle", executionOutput: undefined });
+      updateNodeData(n.id, { executionStatus: "idle", executionOutput: undefined, executionInput: undefined });
     });
 
     try {
@@ -102,6 +102,7 @@ export function RunDialog() {
       updateNodeData(data.nodeId as string, {
         executionStatus: "completed",
         executionOutput: data.output,
+        executionInput: data.input,
       });
     } else if (data.nodeId && data.error) {
       updateNodeData(data.nodeId as string, {
@@ -111,6 +112,16 @@ export function RunDialog() {
     } else if (data.runId && data.trace) {
       setActiveRun(data as any);
       addToHistory(data as any);
+      const trace = Array.isArray(data.trace) ? data.trace : [];
+      trace.forEach((step: { nodeId: string; input?: unknown; output?: unknown }) => {
+        if (step.nodeId) {
+          updateNodeData(step.nodeId, {
+            executionStatus: "completed",
+            executionInput: step.input,
+            executionOutput: step.output,
+          });
+        }
+      });
     }
   }
 
