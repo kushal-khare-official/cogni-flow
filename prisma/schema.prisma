@@ -35,15 +35,15 @@ model ValidationRun {
   workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
 }
 
-model IntegrationTemplate {
+model Integration {
   id               String   @id @default(cuid())
   name             String
   icon             String   @default("plug")
   category         String   @default("custom")
-  type             String   // "http" | "mcp_tool" | "code" | "webhook"
+  type             String   // "http" | "mcp_tool" | "code" | "webhook" | "kafka" | "stripe_agent"
   description      String   @default("")
   baseConfig       String   @default("{}")
-  operations       String   @default("[]")
+  operations       String   @default("[]") // optional: predefined operations (id, name, method, path, bodyTemplate, inputSchema)
   credentialSchema String   @default("[]")
   mockConfig       String   @default("{}")
   isBuiltIn        Boolean  @default(false)

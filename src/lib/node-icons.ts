@@ -12,7 +12,6 @@ import {
   GitBranch,
   GitMerge,
   GitPullRequest,
-  Plug,
   Webhook,
   Repeat,
   Hourglass,
@@ -41,7 +40,6 @@ export const NODE_ICONS: Record<BpmnNodeType, LucideIcon> = {
   [BpmnNodeType.ParallelGateway]: GitMerge,
   [BpmnNodeType.InclusiveGateway]: GitPullRequest,
 
-  [BpmnNodeType.Integration]: Plug,
   [BpmnNodeType.WebhookTrigger]: Webhook,
 
   [BpmnNodeType.Loop]: Repeat,

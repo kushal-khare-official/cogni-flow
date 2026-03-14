@@ -81,9 +81,6 @@ export async function simulateWorkflow(
     } else if (bpmnType === BpmnNodeType.InclusiveGateway) {
       output = { ...currentInput };
       decision = "Inclusive merge — following first outgoing edge";
-    } else if (bpmnType === BpmnNodeType.Integration) {
-      await delay(Math.floor(Math.random() * 80) + 20);
-      output = { ...currentInput, integration: "mock_response", status: "ok" };
     } else if (bpmnType === BpmnNodeType.SendEmail) {
       output = { sent: true, to: currentInput.email || "user@example.com" };
     } else if (bpmnType === BpmnNodeType.HumanReview) {
