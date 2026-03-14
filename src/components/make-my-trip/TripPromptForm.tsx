@@ -63,8 +63,7 @@ export function TripPromptForm({ loading, onGenerate }: TripPromptFormProps) {
             placeholder="e.g. book itinerary from Vizag to Manali, flight + 3-star hotel for 3 days..."
             disabled={loading}
             rows={3}
-            className="w-full resize-none rounded-xl border border-border bg-background pl-10 pr-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 disabled:opacity-50"
-            style={{ focusRingColor: "#6366f1" }}
+            className="w-full resize-none rounded-xl border border-border bg-background pl-10 pr-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
           />
         </div>
 
