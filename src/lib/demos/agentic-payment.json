@@ -2,7 +2,7 @@
   "name": "Agentic Payment with KYA Guardrails",
   "description": "Verify passport, validate mandate, create payment intent, record spend, check anomaly, then branch on result.",
   "nodes": [
-    { "id": "node-1", "type": "startEventNode", "position": { "x": 250, "y": 50 }, "data": { "label": "Start", "bpmnType": "startEvent", "requestBody": [{ "key": "passportId", "type": "string", "required": true, "description": "KYA passport ID" }, { "key": "mandateId", "type": "string", "required": true, "description": "Mandate ID for payment" }] } },
+    { "id": "node-1", "type": "startEventNode", "position": { "x": 250, "y": 50 }, "data": { "label": "Start", "bpmnType": "startEvent", "requestBody": [{ "key": "passportId", "type": "string", "required": true, "description": "KYA passport ID" }, { "key": "mandateId", "type": "string", "required": true, "description": "Mandate ID for payment" }, { "key": "sharedPaymentGrantedToken", "type": "string", "required": true, "description": "SPT from Stripe ACP (agent pays on behalf of user)" }] } },
     {
       "id": "node-2",
       "type": "integrationNode",
@@ -13,6 +13,7 @@
         "integrationTemplateId": "tpl-kya-passport",
         "operationId": "verifyPassport",
         "inputMapping": { "passportId": "{{node-1.passportId}}" },
+        "outputMapping": { "valid": "body.valid", "status": "body.status" },
         "outputSchema": [{ "key": "valid", "type": "boolean" }, { "key": "status", "type": "string" }],
         "stepConfig": { "method": "POST", "path": "/{{passportId}}/verify" }
       }
@@ -28,6 +29,7 @@
         "integrationTemplateId": "tpl-kya-mandate",
         "operationId": "validateAction",
         "inputMapping": { "mandateId": "{{node-1.mandateId}}", "action": "create_payment", "amountCents": "1000" },
+        "outputMapping": { "allowed": "body.allowed", "remaining": "body.remaining" },
         "outputSchema": [{ "key": "allowed", "type": "boolean" }, { "key": "remaining", "type": "number" }],
         "stepConfig": { "method": "POST", "path": "/mandates/{{mandateId}}/validate", "bodyTemplate": { "action": "{{action}}", "amountCents": "{{amountCents}}" } }
       }
@@ -39,11 +41,27 @@
       "data": {
         "label": "Create Payment Intent",
         "bpmnType": "integration",
-        "integrationTemplateId": "tpl-stripe",
+        "integrationTemplateId": "tpl-stripe-agent-toolkit",
         "operationId": "createPaymentIntent",
         "inputMapping": { "amount": "1000", "currency": "usd" },
-        "outputSchema": [{ "key": "paymentIntentId", "type": "string" }, { "key": "status", "type": "string" }, { "key": "amount", "type": "number" }, { "key": "currency", "type": "string" }],
-        "stepConfig": { "method": "POST", "path": "/payment_intents", "bodyTemplate": { "amount": "{{amount}}", "currency": "{{currency}}" } }
+        "outputMapping": { "id": "id", "status": "status", "client_secret": "client_secret" },
+        "outputSchema": [{ "key": "id", "type": "string" }, { "key": "status", "type": "string" }, { "key": "client_secret", "type": "string" }],
+        "stepConfig": {}
+      }
+    },
+    {
+      "id": "node-5b",
+      "type": "integrationNode",
+      "position": { "x": 250, "y": 725 },
+      "data": {
+        "label": "Confirm Payment Intent (with SPT)",
+        "bpmnType": "integration",
+        "integrationTemplateId": "tpl-stripe-agent-toolkit",
+        "operationId": "confirmPaymentIntent",
+        "inputMapping": { "paymentIntentId": "{{node-5.id}}", "sharedPaymentGrantedToken": "{{node-1.sharedPaymentGrantedToken}}" },
+        "outputMapping": { "id": "id", "status": "status", "amount": "amount" },
+        "outputSchema": [{ "key": "id", "type": "string" }, { "key": "status", "type": "string" }, { "key": "amount", "type": "number" }],
+        "stepConfig": {}
       }
     },
     {
@@ -55,7 +73,8 @@
         "bpmnType": "integration",
         "integrationTemplateId": "tpl-kya-mandate",
         "operationId": "recordSpend",
-        "inputMapping": { "mandateId": "{{node-1.mandateId}}", "amountCents": "1000", "action": "payment", "stripeObjectId": "{{node-5.paymentIntentId}}" },
+        "inputMapping": { "mandateId": "{{node-1.mandateId}}", "amountCents": "1000", "action": "payment", "stripeObjectId": "{{node-5b.id}}" },
+        "outputMapping": { "spentCents": "body.spentCents", "remaining": "body.remaining", "status": "body.status" },
         "outputSchema": [{ "key": "spentCents", "type": "number" }, { "key": "remaining", "type": "number" }, { "key": "status", "type": "string" }],
         "stepConfig": { "method": "POST", "path": "/mandates/{{mandateId}}/spend", "bodyTemplate": { "amountCents": "{{amountCents}}", "action": "{{action}}", "stripeObjectId": "{{stripeObjectId}}" } }
       }
@@ -85,6 +104,7 @@
         "integrationTemplateId": "tpl-kya-monitor",
         "operationId": "logAudit",
         "inputMapping": { "passportId": "{{node-1.passportId}}", "action": "payment_success", "amountCents": "1000", "status": "completed" },
+        "outputMapping": { "id": "body.id" },
         "outputSchema": [{ "key": "id", "type": "string" }],
         "stepConfig": { "method": "POST", "path": "/{{passportId}}/audit", "bodyTemplate": { "action": "{{action}}", "amountCents": "{{amountCents}}", "status": "{{status}}" } }
       }
@@ -115,6 +135,7 @@
         "integrationTemplateId": "tpl-kya-monitor",
         "operationId": "logAudit",
         "inputMapping": { "passportId": "{{node-1.passportId}}", "action": "payment_blocked", "amountCents": "0", "status": "blocked" },
+        "outputMapping": { "id": "body.id" },
         "outputSchema": [{ "key": "id", "type": "string" }],
         "stepConfig": { "method": "POST", "path": "/{{passportId}}/audit", "bodyTemplate": { "action": "{{action}}", "amountCents": "{{amountCents}}", "status": "{{status}}" } }
       }
@@ -127,7 +148,8 @@
     { "id": "e-node-3-node-4", "source": "node-3", "target": "node-4", "type": "conditional", "data": { "label": "Yes" } },
     { "id": "e-node-3-node-err1", "source": "node-3", "target": "node-err1", "type": "conditional", "data": { "label": "No" } },
     { "id": "e-node-4-node-5", "source": "node-4", "target": "node-5", "type": "conditional", "data": {} },
-    { "id": "e-node-5-node-6", "source": "node-5", "target": "node-6", "type": "conditional", "data": {} },
+    { "id": "e-node-5-node-5b", "source": "node-5", "target": "node-5b", "type": "conditional", "data": {} },
+    { "id": "e-node-5b-node-6", "source": "node-5b", "target": "node-6", "type": "conditional", "data": {} },
     { "id": "e-node-6-node-7", "source": "node-6", "target": "node-7", "type": "conditional", "data": {} },
     { "id": "e-node-7-node-8", "source": "node-7", "target": "node-8", "type": "conditional", "data": {} },
     { "id": "e-node-8-node-9", "source": "node-8", "target": "node-9", "type": "conditional", "data": { "label": "OK" } },

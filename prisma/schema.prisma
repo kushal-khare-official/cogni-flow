@@ -4,7 +4,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 model Workflow {
@@ -164,4 +164,18 @@ model AgentAuditLog {
   createdAt       DateTime @default(now())
 
   agentPassport AgentPassport @relation(fields: [agentPassportId], references: [id], onDelete: Cascade)
+}
+
+model AgenticCheckoutSession {
+  id               String   @id @default(cuid())
+  status           String   @default("not_ready_for_payment") // not_ready_for_payment | ready_for_payment | completed | canceled | in_progress
+  paymentIntentId  String?
+  amount           Int      @default(0)
+  currency         String   @default("usd")
+  lineItems        String   @default("[]")
+  totals           String   @default("[]")
+  workflowId       String?
+  metadata         String   @default("{}")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }

@@ -1,10 +1,15 @@
 import { PrismaClient } from "@/generated/prisma/client";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { PrismaPg } from "@prisma/adapter-pg";
 
 function createPrismaClient() {
-  const adapter = new PrismaBetterSqlite3({
-    url: process.env.DATABASE_URL ?? "file:./prisma/dev.db",
-  });
+  const url = process.env.DATABASE_URL;
+  if (!url || !url.startsWith("postgres")) {
+    throw new Error(
+      "DATABASE_URL must be a PostgreSQL connection string (postgres://...). " +
+        "Schema uses provider = postgresql; SQLite is not supported.",
+    );
+  }
+  const adapter = new PrismaPg({ connectionString: url });
   return new PrismaClient({ adapter });
 }
 

@@ -2,7 +2,7 @@
   "name": "Agent Onboarding Flow",
   "description": "Register an agent (KYA passport), create a mandate, test Stripe connection, log onboarding.",
   "nodes": [
-    { "id": "node-1", "type": "startEventNode", "position": { "x": 250, "y": 50 }, "data": { "label": "Start", "bpmnType": "startEvent", "requestBody": [{ "key": "name", "type": "string", "required": true, "description": "Agent name" }, { "key": "modelProvider", "type": "string", "required": true, "description": "Model provider (e.g. openai)" }, { "key": "modelVersion", "type": "string", "required": false, "description": "Model version (e.g. gpt-4)" }, { "key": "creatorName", "type": "string", "required": true, "description": "Creator name" }] } },
+    { "id": "node-1", "type": "startEventNode", "position": { "x": 250, "y": 50 }, "data": { "label": "Start", "bpmnType": "startEvent", "requestBody": [{ "key": "name", "type": "string", "required": true, "description": "Agent name" }, { "key": "modelProvider", "type": "string", "required": true, "description": "Model provider (e.g. openai)" }, { "key": "modelVersion", "type": "string", "required": false, "description": "Model version (e.g. gpt-4)" }, { "key": "creatorName", "type": "string", "required": true, "description": "Creator name" }, { "key": "sharedPaymentGrantedToken", "type": "string", "required": false, "description": "SPT from Stripe ACP (for use in payment flows)" }] } },
     {
       "id": "node-2",
       "type": "integrationNode",
@@ -43,6 +43,7 @@
         "integrationTemplateId": "tpl-stripe",
         "operationId": "listCustomers",
         "inputMapping": { "limit": "10" },
+        "outputMapping": { "data": "body.data", "has_more": "body.has_more" },
         "outputSchema": [{ "key": "data", "type": "object", "description": "Customer list" }, { "key": "has_more", "type": "boolean" }],
         "stepConfig": { "method": "GET", "path": "/customers" }
       }

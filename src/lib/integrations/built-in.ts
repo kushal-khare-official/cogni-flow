@@ -295,9 +295,10 @@ export const BUILT_IN_INTEGRATIONS = [
     category: "payments",
     type: "stripe_agent",
     description: "Execute Stripe actions via the agent toolkit (payment intents, refunds, payment links, products) for agentic payment workflows.",
-    baseConfig: JSON.stringify({ allowedActions: ["createPaymentIntent", "retrievePaymentIntent", "createRefund", "createPaymentLink", "createProduct", "createPrice", "listCustomers", "listPrices"] }),
+    baseConfig: JSON.stringify({ allowedActions: ["createPaymentIntent", "confirmPaymentIntent", "retrievePaymentIntent", "createRefund", "createPaymentLink", "createProduct", "createPrice", "listCustomers", "listPrices"] }),
     operations: JSON.stringify([
       { id: "createPaymentIntent", name: "Create Payment Intent", inputSchema: [{ key: "amount", type: "number", required: true }, { key: "currency", type: "string", required: true, default: "usd" }] },
+      { id: "confirmPaymentIntent", name: "Confirm Payment Intent (with SPT)", inputSchema: [{ key: "paymentIntentId", type: "string", required: true, description: "PaymentIntent ID from createPaymentIntent" }, { key: "sharedPaymentGrantedToken", type: "string", required: true, description: "Shared Payment Token from Stripe ACP (agent pays on behalf of user)" }] },
       { id: "retrievePaymentIntent", name: "Retrieve Payment Intent", inputSchema: [{ key: "paymentIntentId", type: "string", required: true }] },
       { id: "listCustomers", name: "List Customers", inputSchema: [{ key: "limit", type: "number", required: false, default: 10 }] },
       { id: "createRefund", name: "Create Refund", inputSchema: [{ key: "payment_intent", type: "string", required: true }, { key: "amount", type: "number", required: false }, { key: "reason", type: "string", required: false }] },
@@ -311,6 +312,7 @@ export const BUILT_IN_INTEGRATIONS = [
       latencyMs: 150,
       perOperation: {
         createPaymentIntent: { id: "pi_mock_123", status: "requires_payment_method", client_secret: "pi_mock_secret" },
+        confirmPaymentIntent: { id: "pi_mock_123", status: "succeeded", amount: 1000 },
         retrievePaymentIntent: { id: "pi_mock_123", status: "succeeded", amount: 1000 },
         listCustomers: { data: [], has_more: false },
         createRefund: { id: "re_mock_123", status: "succeeded" },
