@@ -66,6 +66,10 @@ const bpmnNodeSchema = z.object({
       description: z.string().describe("Brief description of what this integration does"),
       baseConfig: z.array(z.object({ key: z.string(), value: z.string() })).describe("Base configuration key-value pairs (e.g. baseUrl, brokers, topic)"),
     }).nullable().describe("Define a new integration if no existing one fits"),
+    inputMapping: z.array(z.object({
+      key: z.string().describe("Target field name for this node"),
+      value: z.string().describe("Expression referencing a previous node output, e.g. {{node-1.fieldName}}, or a literal value"),
+    })).nullable().describe("Input mapping for intermediate nodes — maps data from previous node outputs into this node"),
     requestBody: z.array(z.object({
       key: z.string().describe("Field name"),
       type: z.enum(["string", "number", "boolean", "object", "array"]).describe("Field type"),
