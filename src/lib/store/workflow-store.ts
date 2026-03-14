@@ -10,34 +10,40 @@ import {
 } from "@xyflow/react";
 import { v4 as uuidv4 } from "uuid";
 
-/** Migrate legacy integration nodes to serviceTask with integrationId/stepConfig; drop integrationTemplateId/operationId */
+/** Normalize nodes: map integration nodes to ServiceTask and set integrationId from integrationTemplateId so demos get integrations assigned. */
 function normalizeNodes(nodes: BpmnNode[]): BpmnNode[] {
   return nodes.map((n) => {
     const d = n.data as Record<string, unknown>;
     const isLegacyIntegration = d.bpmnType === "integration";
-    const hasLegacyIds = d.integrationTemplateId != null || d.operationId != null;
+    const templateId = d.integrationTemplateId as string | undefined;
+    const operationId = d.operationId as string | undefined;
+    const hasLegacyIds = templateId != null || operationId != null;
+    // Resolve template → integration (built-ins use template id as Integration.id)
+    const resolvedIntegrationId = templateId ?? (d.integrationId as string | undefined);
     if (isLegacyIntegration) {
-      const { integrationTemplateId, operationId, ...rest } = d;
+      const { integrationTemplateId, ...rest } = d;
       return {
         ...n,
         type: "taskNode",
         data: {
           ...rest,
           bpmnType: BpmnNodeType.ServiceTask,
-          integrationId: undefined,
+          integrationId: resolvedIntegrationId ?? undefined,
+          operationId: operationId ?? undefined,
           stepConfig: d.stepConfig ?? {},
-        },
+        } as unknown as BpmnNodeData,
       } as BpmnNode;
     }
     if (hasLegacyIds) {
-      const { integrationTemplateId, operationId, ...rest } = d;
+      const { integrationTemplateId, ...rest } = d;
       return {
         ...n,
         data: {
           ...rest,
-          integrationId: undefined,
+          integrationId: resolvedIntegrationId ?? undefined,
+          operationId: operationId ?? undefined,
           stepConfig: d.stepConfig ?? {},
-        },
+        } as unknown as BpmnNodeData,
       } as BpmnNode;
     }
     return n;

@@ -15,21 +15,51 @@ import { useWorkflowStore } from "@/lib/store/workflow-store";
 import { DEMOS } from "@/lib/demos";
 import type { BpmnNode, BpmnEdge } from "@/lib/workflow/types";
 
+/** Static display names for built-in integration template IDs. */
+const BUILT_IN_INTEGRATION_NAMES: Record<string, string> = {
+  "tpl-rest-api": "REST API",
+  "tpl-rest-webhook": "REST API + Webhook Callback",
+  "tpl-mcp-tool": "MCP Tool Call",
+  "tpl-custom-code": "Custom Code Script",
+  "tpl-kafka": "Kafka Topic Consumer",
+  "tpl-kya-passport": "KYA Agent Passport",
+  "tpl-kya-mandate": "KYA Agent Mandate",
+  "tpl-kya-monitor": "KYA Behavioral Monitor",
+  "tpl-stripe": "Stripe Payments",
+  "tpl-stripe-issuing": "Stripe Issuing (Virtual Cards)",
+  "tpl-stripe-billing": "Stripe Billing",
+  "tpl-stripe-agent-toolkit": "Stripe Agent Toolkit",
+};
+
+function integrationDisplayNames(integrationIds: string[]): string[] {
+  return integrationIds.map((id) => BUILT_IN_INTEGRATION_NAMES[id] ?? id);
+}
+
 export function DemoGallery() {
   const [open, setOpen] = useState(false);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const setWorkflow = useWorkflowStore((s) => s.setWorkflow);
 
-  function handleLoad(demo: (typeof DEMOS)[number]) {
+  async function handleLoad(demo: (typeof DEMOS)[number]) {
     setLoadingId(demo.id);
-    setWorkflow({
-      name: demo.name,
-      description: demo.description,
-      nodes: demo.nodes as BpmnNode[],
-      edges: demo.edges as BpmnEdge[],
-    });
-    setLoadingId(null);
-    setOpen(false);
+    try {
+      if (demo.requiredIntegrationIds.length > 0) {
+        await fetch("/api/integrations/ensure-builtin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ integrationIds: demo.requiredIntegrationIds }),
+        });
+      }
+      setWorkflow({
+        name: demo.name,
+        description: demo.description,
+        nodes: demo.nodes as BpmnNode[],
+        edges: demo.edges as BpmnEdge[],
+      });
+      setOpen(false);
+    } finally {
+      setLoadingId(null);
+    }
   }
 
   return (
@@ -70,6 +100,11 @@ export function DemoGallery() {
                   <p className="mt-1 text-[10px] text-zinc-400">
                     {demo.nodes.length} nodes · {demo.edges.length} edges
                   </p>
+                  {demo.requiredIntegrationIds.length > 0 && (
+                    <p className="mt-1 text-[10px] text-zinc-500 dark:text-zinc-400">
+                      Uses: {integrationDisplayNames(demo.requiredIntegrationIds).join(", ")}
+                    </p>
+                  )}
                 </div>
                 <Button
                   size="sm"

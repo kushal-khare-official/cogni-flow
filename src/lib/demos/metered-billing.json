@@ -2,13 +2,91 @@
   "name": "Metered AI Billing Pipeline",
   "description": "Verify agent, validate billing mandate, track token usage (meter event), record spend, generate invoice, log billing.",
   "nodes": [
-    { "id": "node-1", "type": "startEventNode", "position": { "x": 250, "y": 50 }, "data": { "label": "Start", "bpmnType": "startEvent" } },
-    { "id": "node-2", "type": "integrationNode", "position": { "x": 250, "y": 200 }, "data": { "label": "Verify Agent", "bpmnType": "integration", "integrationTemplateId": "tpl-kya-passport", "operationId": "verifyPassport" } },
-    { "id": "node-3", "type": "integrationNode", "position": { "x": 250, "y": 350 }, "data": { "label": "Validate Billing Mandate", "bpmnType": "integration", "integrationTemplateId": "tpl-kya-mandate", "operationId": "validateAction" } },
-    { "id": "node-4", "type": "integrationNode", "position": { "x": 250, "y": 500 }, "data": { "label": "Track Token Usage", "bpmnType": "integration", "integrationTemplateId": "tpl-stripe-billing", "operationId": "createMeterEvent" } },
-    { "id": "node-5", "type": "integrationNode", "position": { "x": 250, "y": 650 }, "data": { "label": "Record Spend", "bpmnType": "integration", "integrationTemplateId": "tpl-kya-mandate", "operationId": "recordSpend" } },
-    { "id": "node-6", "type": "integrationNode", "position": { "x": 250, "y": 800 }, "data": { "label": "Generate Invoice", "bpmnType": "integration", "integrationTemplateId": "tpl-stripe-billing", "operationId": "createInvoice" } },
-    { "id": "node-7", "type": "integrationNode", "position": { "x": 250, "y": 950 }, "data": { "label": "Log Billing", "bpmnType": "integration", "integrationTemplateId": "tpl-kya-monitor", "operationId": "logAudit" } },
+    { "id": "node-1", "type": "startEventNode", "position": { "x": 250, "y": 50 }, "data": { "label": "Start", "bpmnType": "startEvent", "requestBody": [{ "key": "passportId", "type": "string", "required": true, "description": "KYA passport ID" }, { "key": "mandateId", "type": "string", "required": true, "description": "Billing mandate ID" }, { "key": "customerId", "type": "string", "required": true, "description": "Stripe customer ID for invoicing" }] } },
+    {
+      "id": "node-2",
+      "type": "integrationNode",
+      "position": { "x": 250, "y": 200 },
+      "data": {
+        "label": "Verify Agent",
+        "bpmnType": "integration",
+        "integrationTemplateId": "tpl-kya-passport",
+        "operationId": "verifyPassport",
+        "inputMapping": { "passportId": "{{node-1.passportId}}" },
+        "outputSchema": [{ "key": "valid", "type": "boolean" }, { "key": "status", "type": "string" }],
+        "stepConfig": { "method": "POST", "path": "/{{passportId}}/verify" }
+      }
+    },
+    {
+      "id": "node-3",
+      "type": "integrationNode",
+      "position": { "x": 250, "y": 350 },
+      "data": {
+        "label": "Validate Billing Mandate",
+        "bpmnType": "integration",
+        "integrationTemplateId": "tpl-kya-mandate",
+        "operationId": "validateAction",
+        "inputMapping": { "mandateId": "{{node-1.mandateId}}", "action": "meter_usage", "amountCents": "0" },
+        "outputSchema": [{ "key": "allowed", "type": "boolean" }, { "key": "remaining", "type": "number" }],
+        "stepConfig": { "method": "POST", "path": "/mandates/{{mandateId}}/validate", "bodyTemplate": { "action": "{{action}}", "amountCents": "{{amountCents}}" } }
+      }
+    },
+    {
+      "id": "node-4",
+      "type": "integrationNode",
+      "position": { "x": 250, "y": 500 },
+      "data": {
+        "label": "Track Token Usage",
+        "bpmnType": "integration",
+        "integrationTemplateId": "tpl-stripe-billing",
+        "operationId": "createMeterEvent",
+        "inputMapping": { "event_name": "tokens_used", "payload": "{\"tokens\": 1500, \"model\": \"gpt-4\"}" },
+        "outputSchema": [{ "key": "event_name", "type": "string" }, { "key": "timestamp", "type": "string" }],
+        "stepConfig": { "method": "POST", "path": "/billing/meter_events", "bodyTemplate": { "event_name": "{{event_name}}", "payload": "{{payload}}" } }
+      }
+    },
+    {
+      "id": "node-5",
+      "type": "integrationNode",
+      "position": { "x": 250, "y": 650 },
+      "data": {
+        "label": "Record Spend",
+        "bpmnType": "integration",
+        "integrationTemplateId": "tpl-kya-mandate",
+        "operationId": "recordSpend",
+        "inputMapping": { "mandateId": "{{node-1.mandateId}}", "amountCents": "150", "action": "token_usage" },
+        "outputSchema": [{ "key": "spentCents", "type": "number" }, { "key": "remaining", "type": "number" }, { "key": "status", "type": "string" }],
+        "stepConfig": { "method": "POST", "path": "/mandates/{{mandateId}}/spend", "bodyTemplate": { "amountCents": "{{amountCents}}", "action": "{{action}}" } }
+      }
+    },
+    {
+      "id": "node-6",
+      "type": "integrationNode",
+      "position": { "x": 250, "y": 800 },
+      "data": {
+        "label": "Generate Invoice",
+        "bpmnType": "integration",
+        "integrationTemplateId": "tpl-stripe-billing",
+        "operationId": "createInvoice",
+        "inputMapping": { "customer": "{{node-1.customerId}}" },
+        "outputSchema": [{ "key": "id", "type": "string" }, { "key": "status", "type": "string" }],
+        "stepConfig": { "method": "POST", "path": "/invoices", "bodyTemplate": { "customer": "{{customer}}" } }
+      }
+    },
+    {
+      "id": "node-7",
+      "type": "integrationNode",
+      "position": { "x": 250, "y": 950 },
+      "data": {
+        "label": "Log Billing",
+        "bpmnType": "integration",
+        "integrationTemplateId": "tpl-kya-monitor",
+        "operationId": "logAudit",
+        "inputMapping": { "passportId": "{{node-1.passportId}}", "action": "billing_cycle", "amountCents": "150", "status": "invoiced" },
+        "outputSchema": [{ "key": "id", "type": "string" }],
+        "stepConfig": { "method": "POST", "path": "/{{passportId}}/audit", "bodyTemplate": { "action": "{{action}}", "amountCents": "{{amountCents}}", "status": "{{status}}" } }
+      }
+    },
     { "id": "node-8", "type": "endEventNode", "position": { "x": 250, "y": 1100 }, "data": { "label": "End", "bpmnType": "endEvent" } }
   ],
   "edges": [
