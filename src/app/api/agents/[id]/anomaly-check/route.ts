@@ -3,8 +3,8 @@ import { prisma } from "@/lib/db";
 import {
   computeAnomalyScore,
   getAnomalyThreshold,
-} from "@/lib/stripe/anomaly-detector";
-import { logAuditEntry } from "@/lib/stripe/audit";
+} from "@/lib/agents/anomaly-detector";
+import { logAuditEntry } from "@/lib/agents/audit";
 
 type Params = { params: Promise<{ id: string }> };
 

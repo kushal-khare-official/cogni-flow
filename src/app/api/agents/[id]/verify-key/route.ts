@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 /**
  * Legacy endpoint. Agent authentication for workflow execution
- * uses credentials linked to the integration node (Stripe RAK, etc.).
+ * uses credentials linked to the integration node.
  */
 export async function POST() {
   return NextResponse.json(

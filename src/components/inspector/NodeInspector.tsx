@@ -59,7 +59,7 @@ export function NodeInspector() {
     error?: string;
   } | null>(null);
   const [testToken, setTestToken] = useState("");
-  const [testInputJson, setTestInputJson] = useState("{}");
+  const [testInputJson, setTestInputJson] = useState("");
 
   const node = nodes.find((n) => n.id === selectedNodeId);
 
@@ -143,15 +143,18 @@ export function NodeInspector() {
     setTestLoading(true);
     setTestResult(null);
     try {
-      // Build a minimal execution context so path/body templates resolve (e.g. {{node-1.name}}, {{name}})
       let node1Data: Record<string, unknown> = {};
-      try {
-        const parsed = JSON.parse(testInputJson.trim() || "{}");
-        if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
-          node1Data = parsed;
+      if (testInputJson.trim()) {
+        try {
+          const parsed = JSON.parse(testInputJson.trim());
+          if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+            node1Data = parsed;
+          }
+        } catch (parseErr) {
+          setTestResult({ status: 0, statusText: "", body: "", error: `Invalid test input JSON: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}` });
+          setTestLoading(false);
+          return;
         }
-      } catch {
-        // keep {}
       }
       const ctx = new ExecutionContext();
       ctx.set("node-1", node1Data);
@@ -191,8 +194,20 @@ export function NodeInspector() {
           }
         }
         const resolvedBody = resolveTemplate(template, ctx);
-        body = typeof resolvedBody === "string" ? resolvedBody : JSON.stringify(resolvedBody);
         if (!headers["Content-Type"]) headers["Content-Type"] = "application/json";
+        if (headers["Content-Type"] === "application/x-www-form-urlencoded") {
+          if (typeof resolvedBody === "object" && resolvedBody !== null) {
+            const params = new URLSearchParams();
+            for (const [k, v] of Object.entries(resolvedBody as Record<string, unknown>)) {
+              if (v !== undefined && v !== null && v !== "") params.append(k, String(v));
+            }
+            body = params.toString();
+          } else {
+            body = String(resolvedBody ?? "");
+          }
+        } else {
+          body = typeof resolvedBody === "string" ? resolvedBody : JSON.stringify(resolvedBody);
+        }
       }
 
       const res = await fetch(url, { method, headers, body });
@@ -204,6 +219,64 @@ export function NodeInspector() {
         parsed = text;
       }
       setTestResult({ status: res.status, statusText: res.statusText, body: parsed });
+    } catch (err) {
+      setTestResult({
+        status: 0,
+        statusText: "",
+        body: "",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setTestLoading(false);
+    }
+  }
+
+  async function sendCodeTestRequest() {
+    const code = (stepConfig.code as string)?.trim();
+    if (!code) {
+      setTestResult({ status: 0, statusText: "", body: "", error: "No code to test. Enter code above." });
+      return;
+    }
+    setTestLoading(true);
+    setTestResult(null);
+    try {
+      let node1Data: Record<string, unknown> = {};
+      if (testInputJson.trim()) {
+        try {
+          const parsed = JSON.parse(testInputJson.trim());
+          if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+            node1Data = parsed;
+          }
+        } catch (parseErr) {
+          setTestResult({ status: 0, statusText: "", body: "", error: `Invalid test input JSON: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}` });
+          setTestLoading(false);
+          return;
+        }
+      }
+
+      const execCtx = new ExecutionContext();
+      execCtx.set("node-1", node1Data);
+
+      const inputMapping = (data.inputMapping ?? {}) as Record<string, string>;
+      const resolvedInputs: Record<string, unknown> = {};
+      for (const [key, expr] of Object.entries(inputMapping)) {
+        resolvedInputs[key] = resolveExpression(expr, execCtx);
+      }
+      execCtx.set("_inputs", resolvedInputs);
+
+      const language = (stepConfig.language as string) ?? "javascript";
+      const res = await fetch("/api/integrations/test-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, language, ctx: execCtx.toJSON() }),
+      });
+      const resData = await res.json();
+      const pretty = JSON.stringify(resData, null, 2);
+      if (resData.error) {
+        setTestResult({ status: res.status, statusText: "", body: "", error: resData.error + (resData.stderr ? `\n${resData.stderr}` : "") });
+      } else {
+        setTestResult({ status: res.status, statusText: "OK", body: pretty });
+      }
     } catch (err) {
       setTestResult({
         status: 0,
@@ -431,24 +504,98 @@ export function NodeInspector() {
         </>
       ) : null}
 
-      {/* End Event — Webhook response URL */}
+      {/* End Event — Response configuration */}
       {(data.bpmnType as BpmnNodeType) === BpmnNodeType.EndEvent ? (
         <>
           <Separator />
           <div className="space-y-3">
-            <Label className="text-xs font-semibold text-zinc-600">Webhook Response</Label>
+            <Label className="text-xs font-semibold text-zinc-600">Response Mode</Label>
             <p className="text-[10px] text-zinc-400">
-              When the workflow completes, the result will be POSTed to this URL.
+              Choose how the workflow returns its result when triggered via REST API or webhook.
             </p>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-zinc-500">Webhook URL</Label>
-              <Input
-                value={(data.webhookUrl as string) ?? ""}
-                onChange={(e) => update({ webhookUrl: e.target.value })}
-                placeholder="https://example.com/webhook/callback"
-                className="text-xs font-mono"
-              />
-            </div>
+            <Select
+              value={(data.responseMode as string) ?? "sync"}
+              onValueChange={(v) => update({ responseMode: v as "webhook" | "sync" })}
+            >
+              <SelectTrigger className="text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="sync">Sync — Return response in HTTP reply</SelectItem>
+                  <SelectItem value="webhook">Async — Deliver to webhook URL</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+
+            {(data.responseMode as string) === "webhook" && (
+              <div className="space-y-1.5">
+                <Label className="text-xs text-zinc-500">Webhook URL</Label>
+                <Input
+                  value={(data.webhookUrl as string) ?? ""}
+                  onChange={(e) => update({ webhookUrl: e.target.value })}
+                  placeholder="https://example.com/webhook/callback"
+                  className="text-xs font-mono"
+                />
+              </div>
+            )}
+
+            <Separator />
+            <Label className="text-xs font-semibold text-zinc-600">Response Mapping</Label>
+            <p className="text-[10px] text-zinc-400">
+              Map specific values from the workflow context into the response output. Leave empty to return the full end-node input.
+            </p>
+            {Object.entries((data.responseMapping as Record<string, string>) ?? {}).map(([key, expr], idx) => (
+              <div key={idx} className="flex items-center gap-1.5">
+                <Input
+                  value={key}
+                  onChange={(e) => {
+                    const mapping = { ...((data.responseMapping as Record<string, string>) ?? {}) };
+                    const entries = Object.entries(mapping);
+                    entries[idx] = [e.target.value, expr];
+                    update({ responseMapping: Object.fromEntries(entries) });
+                  }}
+                  placeholder="key"
+                  className="flex-1 text-xs font-mono"
+                />
+                <span className="text-zinc-300">←</span>
+                <Input
+                  value={expr}
+                  onChange={(e) => {
+                    const mapping = { ...((data.responseMapping as Record<string, string>) ?? {}) };
+                    mapping[key] = e.target.value;
+                    update({ responseMapping: mapping });
+                  }}
+                  placeholder="{{node-id.field}}"
+                  className="flex-1 text-xs font-mono"
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 shrink-0"
+                  onClick={() => {
+                    const mapping = { ...((data.responseMapping as Record<string, string>) ?? {}) };
+                    delete mapping[key];
+                    update({ responseMapping: mapping });
+                  }}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            ))}
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full text-xs"
+              onClick={() => {
+                const mapping = { ...((data.responseMapping as Record<string, string>) ?? {}) };
+                mapping[""] = "";
+                update({ responseMapping: mapping });
+              }}
+            >
+              <Plus className="mr-1 h-3 w-3" /> Add Mapping
+            </Button>
+
             <div className="rounded-md border border-zinc-100 bg-zinc-50 p-2 text-[11px] text-zinc-500">
               <p className="font-medium text-zinc-600">Response payload:</p>
               <pre className="mt-1 whitespace-pre-wrap font-mono text-[10px] text-zinc-400">{`{
@@ -628,23 +775,39 @@ export function NodeInspector() {
                         />
                       </div>
                     </div>
-                    <div className="space-y-1">
-                      <Label className="text-[11px] text-zinc-500">Body template (JSON)</Label>
-                      <Textarea
-                        value={typeof stepConfig.bodyTemplate === "string" ? stepConfig.bodyTemplate : (stepConfig.bodyTemplate ? JSON.stringify(stepConfig.bodyTemplate, null, 2) : (resolvedOperation?.bodyTemplate ? JSON.stringify(resolvedOperation.bodyTemplate, null, 2) : ""))}
-                        onChange={(e) => {
-                          const raw = e.target.value.trim();
-                          let bodyTemplate: unknown = undefined;
-                          if (raw) {
-                            try { bodyTemplate = JSON.parse(raw); } catch { bodyTemplate = raw; }
-                          }
-                          update({ stepConfig: { ...stepConfig, bodyTemplate } });
-                        }}
-                        placeholder='{"key": "{{value}}"}'
-                        rows={3}
-                        className="resize-none font-mono text-xs"
-                      />
-                    </div>
+                    {(() => {
+                      const dh = integrationBaseConfig.defaultHeaders as Record<string, string> | undefined;
+                      const isForm = dh?.["Content-Type"] === "application/x-www-form-urlencoded";
+                      return (
+                        <div className="space-y-1">
+                          <Label className="text-[11px] text-zinc-500">
+                            Body template{" "}
+                            <span className="font-normal text-zinc-400">
+                              ({isForm ? "key-value pairs — sent as form data" : "JSON"})
+                            </span>
+                          </Label>
+                          <Textarea
+                            value={typeof stepConfig.bodyTemplate === "string" ? stepConfig.bodyTemplate : (stepConfig.bodyTemplate ? JSON.stringify(stepConfig.bodyTemplate, null, 2) : (resolvedOperation?.bodyTemplate ? JSON.stringify(resolvedOperation.bodyTemplate, null, 2) : ""))}
+                            onChange={(e) => {
+                              const raw = e.target.value.trim();
+                              let bodyTemplate: unknown = undefined;
+                              if (raw) {
+                                try { bodyTemplate = JSON.parse(raw); } catch { bodyTemplate = raw; }
+                              }
+                              update({ stepConfig: { ...stepConfig, bodyTemplate } });
+                            }}
+                            placeholder={isForm ? '{"amount": "{{amount}}", "currency": "{{currency}}"}' : '{"key": "{{value}}"}'}
+                            rows={3}
+                            className="resize-none font-mono text-xs"
+                          />
+                          {isForm && (
+                            <p className="text-[10px] text-zinc-400">
+                              Key-value pairs will be encoded as <code className="rounded bg-zinc-100 px-0.5 text-[9px]">key=value&amp;key2=value2</code> when sent.
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })()}
                     <Separator />
                     <div className="space-y-2">
                       <Label className="text-xs font-semibold text-zinc-600">Test integration</Label>
@@ -757,6 +920,58 @@ export function NodeInspector() {
                         rows={8}
                         className="resize-none font-mono text-xs"
                       />
+                    </div>
+                    <Separator />
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold text-zinc-600">Test code</Label>
+                      <div className="space-y-1">
+                        <Label className="text-[11px] text-zinc-500">Test input (JSON) — used to resolve {""}
+                          <code className="rounded bg-zinc-100 px-0.5 text-[10px]">{"{{node-1.*}}"}</code> and input mapping; available as{" "}
+                          <code className="rounded bg-zinc-100 px-0.5 text-[10px]">ctx[&apos;node-1&apos;]</code> and{" "}
+                          <code className="rounded bg-zinc-100 px-0.5 text-[10px]">ctx._inputs</code>
+                        </Label>
+                        <Textarea
+                          value={testInputJson}
+                          onChange={(e) => setTestInputJson(e.target.value)}
+                          placeholder='{"name": "My Agent", "modelProvider": "openai"}'
+                          rows={2}
+                          className="resize-none font-mono text-xs"
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={sendCodeTestRequest}
+                        disabled={testLoading}
+                        className="gap-1.5 text-xs"
+                      >
+                        {testLoading ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <Send className="size-3.5" />
+                        )}
+                        {testLoading ? "Running…" : "Run test code"}
+                      </Button>
+                      {testResult && (
+                        <div className="rounded-md border border-zinc-200 bg-zinc-50 p-2 dark:border-zinc-700 dark:bg-zinc-900/50">
+                          <div className="mb-1 flex items-center gap-2">
+                            {testResult.error ? (
+                              <XCircle className="size-3.5 text-red-500" />
+                            ) : (
+                              <CheckCircle2 className="size-3.5 text-emerald-500" />
+                            )}
+                            <span className="text-[11px] font-medium">
+                              {testResult.error ? "Error" : "Success"}
+                            </span>
+                          </div>
+                          {(testResult.error ?? testResult.body) && (
+                            <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded bg-zinc-100 p-1.5 font-mono text-[10px] dark:bg-zinc-800">
+                              {(testResult.error ?? (testResult.body || "(no output)"))}
+                            </pre>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </>
                 )}

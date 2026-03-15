@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { signMandate } from "@/lib/stripe/agent-passport";
+import { signMandate } from "@/lib/crypto/fingerprint";
 
 type Params = { params: Promise<{ id: string }> };
 

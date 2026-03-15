@@ -1,8 +1,5 @@
 import agentOnboarding from "./agent-onboarding.json";
-import agenticPayment from "./agentic-payment.json";
-import sharedPaymentToken from "./shared-payment-token.json";
-import virtualCardBudget from "./virtual-card-budget.json";
-import meteredBilling from "./metered-billing.json";
+import agentCapturePayment from "./agent-capture-payment.json";
 
 export interface DemoWorkflow {
   id: string;
@@ -34,35 +31,11 @@ export const DEMOS: DemoWorkflow[] = [
     requiredIntegrationIds: getRequiredIntegrationIds((agentOnboarding as { nodes: unknown[] }).nodes),
   },
   {
-    id: "agentic-payment",
-    name: (agenticPayment as { name: string }).name,
-    description: (agenticPayment as { description: string }).description,
-    nodes: (agenticPayment as { nodes: unknown[] }).nodes,
-    edges: (agenticPayment as { edges: unknown[] }).edges,
-    requiredIntegrationIds: getRequiredIntegrationIds((agenticPayment as { nodes: unknown[] }).nodes),
-  },
-  {
-    id: "shared-payment-token",
-    name: (sharedPaymentToken as { name: string }).name,
-    description: (sharedPaymentToken as { description: string }).description,
-    nodes: (sharedPaymentToken as { nodes: unknown[] }).nodes,
-    edges: (sharedPaymentToken as { edges: unknown[] }).edges,
-    requiredIntegrationIds: getRequiredIntegrationIds((sharedPaymentToken as { nodes: unknown[] }).nodes),
-  },
-  {
-    id: "virtual-card-budget",
-    name: (virtualCardBudget as { name: string }).name,
-    description: (virtualCardBudget as { description: string }).description,
-    nodes: (virtualCardBudget as { nodes: unknown[] }).nodes,
-    edges: (virtualCardBudget as { edges: unknown[] }).edges,
-    requiredIntegrationIds: getRequiredIntegrationIds((virtualCardBudget as { nodes: unknown[] }).nodes),
-  },
-  {
-    id: "metered-billing",
-    name: (meteredBilling as { name: string }).name,
-    description: (meteredBilling as { description: string }).description,
-    nodes: (meteredBilling as { nodes: unknown[] }).nodes,
-    edges: (meteredBilling as { edges: unknown[] }).edges,
-    requiredIntegrationIds: getRequiredIntegrationIds((meteredBilling as { nodes: unknown[] }).nodes),
+    id: "agent-capture-payment",
+    name: (agentCapturePayment as { name: string }).name,
+    description: (agentCapturePayment as { description: string }).description,
+    nodes: (agentCapturePayment as { nodes: unknown[] }).nodes,
+    edges: (agentCapturePayment as { edges: unknown[] }).edges,
+    requiredIntegrationIds: getRequiredIntegrationIds((agentCapturePayment as { nodes: unknown[] }).nodes),
   },
 ];

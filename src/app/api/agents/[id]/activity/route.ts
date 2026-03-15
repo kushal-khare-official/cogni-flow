@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAuditTrail } from "@/lib/stripe/audit";
+import { getAuditTrail } from "@/lib/agents/audit";
 
 type Params = { params: Promise<{ id: string }> };
 

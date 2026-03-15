@@ -19,12 +19,14 @@ interface ExecutionStore {
   activeRun: ExecutionRunRecord | null;
   history: ExecutionRunRecord[];
   executionPanelOpen: boolean;
+  selectedRunId: string | null;
 
   setIsExecuting: (v: boolean) => void;
   setActiveRun: (run: ExecutionRunRecord | null) => void;
   addToHistory: (run: ExecutionRunRecord) => void;
   setHistory: (runs: ExecutionRunRecord[]) => void;
   setExecutionPanelOpen: (open: boolean) => void;
+  setSelectedRunId: (id: string | null) => void;
 }
 
 export const useExecutionStore = create<ExecutionStore>((set) => ({
@@ -32,6 +34,7 @@ export const useExecutionStore = create<ExecutionStore>((set) => ({
   activeRun: null,
   history: [],
   executionPanelOpen: false,
+  selectedRunId: null,
 
   setIsExecuting: (v) => set({ isExecuting: v }),
   setActiveRun: (run) => set({ activeRun: run }),
@@ -41,4 +44,5 @@ export const useExecutionStore = create<ExecutionStore>((set) => ({
     })),
   setHistory: (runs) => set({ history: runs }),
   setExecutionPanelOpen: (open) => set({ executionPanelOpen: open }),
+  setSelectedRunId: (id) => set({ selectedRunId: id }),
 }));

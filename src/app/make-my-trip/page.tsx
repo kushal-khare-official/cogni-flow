@@ -2,6 +2,10 @@
 
 import { useCallback, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
 import { TripPromptForm } from "@/components/make-my-trip/TripPromptForm"
 import { BookingStepTimeline } from "@/components/make-my-trip/BookingStepTimeline"
 import { BookingSummary } from "@/components/make-my-trip/BookingSummary"
@@ -11,14 +15,19 @@ import type { TravelPlanOutput, TravelBookingInput } from "@/lib/travel/schema"
 import type { BookingExecutionStep } from "@/lib/travel/types"
 import { PaymentAgentOnboardDialog } from "@/components/make-my-trip/PaymentAgentOnboardDialog"
 import { OnboardedAgentsDialog } from "@/components/make-my-trip/OnboardedAgentsDialog"
+import { AgentSelector, type SelectedAgent } from "@/components/make-my-trip/AgentSelector"
 import {
-  Compass,
-  PlayCircle,
-  CheckCircle,
+  Globe,
+  Play,
+  CircleCheck,
   Loader2,
   CalendarCheck,
   AlertTriangle,
+  Route,
 } from "lucide-react"
+
+const BALANCE_WORKFLOW_ID = "cmmrs95cv00028olngwk35neu"
+const PAYU_KEY = "szO8St"
 
 interface TravelPlanApiResponse {
   provider: "openai" | "anthropic" | "google"
@@ -52,6 +61,51 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+async function deductViaWorkflow(
+  agentId: string,
+  captureHash: string,
+  amountCents: number,
+  bookingReference: string,
+): Promise<{ success: boolean; balanceCents?: number; deducted?: number; error?: string }> {
+  const res = await fetch(`/api/workflows/${BALANCE_WORKFLOW_ID}/trigger`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ agentId, captureHash, amountCents: String(amountCents), bookingReference }),
+  })
+  const data = await res.json()
+
+  if (!res.ok || data.status === "failed") {
+    return { success: false, error: data.error ?? "Balance deduction workflow failed" }
+  }
+
+  const result = data.output?.result ?? data.output ?? {}
+  return {
+    success: true,
+    balanceCents: result.balanceCents,
+    deducted: result.deducted,
+  }
+}
+
+async function capturePayU(
+  mihpayid: string,
+  txnid: string,
+  amount: string,
+  hash?: string,
+): Promise<{ success: boolean; response?: unknown; error?: string }> {
+  const payload: Record<string, string> = { mihpayid, txnid, amount }
+  if (hash) payload.hash = hash
+  const res = await fetch("/api/payu/capture", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+  const data = await res.json()
+  if (!res.ok) {
+    return { success: false, error: data.error ?? "PayU capture failed" }
+  }
+  return { success: true, response: data.response }
+}
+
 /* ─── Process Banner ─────────────────────────────────────────── */
 interface ProcessBannerProps {
   plan: TravelPlanOutput | null
@@ -71,108 +125,81 @@ function ProcessBanner({ plan, steps, running, busy, completed, onRun }: Process
 
   if (allDone) {
     return (
-      <div
-        className="flex items-center gap-4 rounded-xl border px-5 py-4"
-        style={{ backgroundColor: "#f0fdf4", borderColor: "#86efac" }}
-      >
-        <div
-          className="flex size-10 shrink-0 items-center justify-center rounded-xl"
-          style={{ backgroundColor: "#10b981" }}
-        >
-          <CheckCircle className="size-5 text-white" />
-        </div>
-        <div>
-          <p className="text-sm font-bold text-green-700">All {total} bookings confirmed!</p>
-          <p className="text-xs text-green-600">Payments completed. Review the summary below.</p>
-        </div>
-        <div className="ml-auto text-right">
-          <p className="text-lg font-extrabold text-green-700">{pct}%</p>
-          <p className="text-xs text-green-600">complete</p>
-        </div>
-      </div>
+      <Card className="border-emerald-200 bg-emerald-50/60">
+        <CardContent className="flex items-center gap-4">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500">
+            <CircleCheck className="size-5 text-white" />
+          </div>
+          <div>
+            <p className="font-display text-sm font-bold text-emerald-700">All {total} bookings confirmed!</p>
+            <p className="text-xs text-emerald-600">Payments completed. Review the summary below.</p>
+          </div>
+          <div className="ml-auto text-right">
+            <p className="font-display text-lg font-extrabold text-emerald-700">{pct}%</p>
+            <p className="text-xs text-emerald-600">complete</p>
+          </div>
+        </CardContent>
+      </Card>
     )
   }
 
   if (running) {
     return (
-      <div
-        className="space-y-3 rounded-xl border px-5 py-4"
-        style={{
-          background: "linear-gradient(135deg, #3b82f608 0%, #6366f108 100%)",
-          borderColor: "#3b82f630",
-        }}
-      >
-        <div className="flex items-center gap-3">
-          <div
-            className="flex size-10 shrink-0 items-center justify-center rounded-xl"
-            style={{ background: "linear-gradient(135deg, #3b82f6, #6366f1)" }}
-          >
-            <Loader2 className="size-5 animate-spin text-white" />
+      <Card className="border-travel-primary/20 bg-travel-primary-muted/30">
+        <CardContent className="space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-travel-primary">
+              <Loader2 className="size-5 animate-spin text-white" />
+            </div>
+            <div className="flex-1">
+              <p className="font-display text-sm font-bold text-travel-primary">Processing bookings…</p>
+              <p className="text-xs text-muted-foreground">
+                {completed} of {total} steps completed
+              </p>
+            </div>
+            <span className="font-display text-lg font-extrabold text-travel-primary">{pct}%</span>
           </div>
-          <div className="flex-1">
-            <p className="text-sm font-bold" style={{ color: "#3b82f6" }}>Processing bookings…</p>
-            <p className="text-xs text-muted-foreground">
-              {completed} of {total} steps completed · booking and payment in progress
-            </p>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-travel-primary/10">
+            <div
+              className="h-full rounded-full bg-travel-primary transition-all duration-500"
+              style={{ width: `${pct}%` }}
+            />
           </div>
-          <span className="text-lg font-extrabold" style={{ color: "#6366f1" }}>{pct}%</span>
-        </div>
-        <div className="h-2 w-full overflow-hidden rounded-full bg-blue-100">
-          <div
-            className="h-full rounded-full transition-all duration-500"
-            style={{
-              width: `${pct}%`,
-              background: "linear-gradient(90deg, #3b82f6, #6366f1)",
-            }}
-          />
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     )
   }
 
   const pending = steps.filter((s) => s.status === "pending" || s.status === "failed").length
 
   return (
-    <div
-      className="flex flex-wrap items-center justify-between gap-4 rounded-xl border px-5 py-4"
-      style={{
-        background: "linear-gradient(135deg, #3b82f606 0%, #6366f106 100%)",
-        borderColor: "#6366f128",
-        borderStyle: "dashed",
-      }}
-    >
-      <div className="flex items-center gap-3">
-        <div
-          className="flex size-10 shrink-0 items-center justify-center rounded-xl"
-          style={{ background: "linear-gradient(135deg, #3b82f6, #6366f1)" }}
+    <Card className="border-dashed border-travel-primary/20 bg-travel-primary-muted/20">
+      <CardContent className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-travel-primary">
+            <CalendarCheck className="size-5 text-white" />
+          </div>
+          <div>
+            <p className="font-display text-sm font-semibold text-foreground">
+              {completed > 0
+                ? `${pending} remaining booking${pending !== 1 ? "s" : ""}`
+                : `Ready to process ${total} bookings`}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Book all at once, or pick individual items from the pricing breakdown above.
+            </p>
+          </div>
+        </div>
+        <Button
+          onClick={onRun}
+          disabled={busy || pending === 0}
+          className="gap-2 bg-travel-primary px-5 text-travel-primary-foreground hover:bg-travel-primary/90"
         >
-          <CalendarCheck className="size-5 text-white" />
-        </div>
-        <div>
-          <p className="text-sm font-semibold text-foreground">
-            {completed > 0
-              ? `${pending} remaining booking${pending !== 1 ? "s" : ""}`
-              : `Ready to process ${total} bookings`}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Book all at once, or pick individual items from the pricing breakdown above.
-          </p>
-        </div>
-      </div>
-      <Button
-        onClick={onRun}
-        disabled={busy || pending === 0}
-        className="gap-2 px-5"
-        style={
-          busy || pending === 0
-            ? undefined
-            : { background: "linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)" }
-        }
-      >
-        <PlayCircle className="size-4" />
-        {completed > 0 ? "Book Remaining" : "Book All"}
-      </Button>
-    </div>
+          <Play className="size-4" />
+          {completed > 0 ? "Book Remaining" : "Book All"}
+        </Button>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -185,6 +212,7 @@ export default function MakeMyTripPage() {
   const [error, setError] = useState<string | null>(null)
   const [plan, setPlan] = useState<TravelPlanOutput | null>(null)
   const [steps, setSteps] = useState<BookingExecutionStep[]>([])
+  const [selectedAgent, setSelectedAgent] = useState<SelectedAgent | null>(null)
 
   const completedBookings = useMemo(
     () => steps.filter((step) => step.status === "paymentDone").length,
@@ -229,6 +257,89 @@ export default function MakeMyTripPage() {
     }
   }
 
+  async function processPayment(
+    index: number,
+    bookingReference: string,
+    estimatedCost: number,
+  ) {
+    if (selectedAgent) {
+      const amountCents = Math.round(estimatedCost * 100)
+
+      updateStep(index, (step) => ({
+        ...step,
+        status: "paymentInProgress",
+        paymentApi: `/api/workflows/${BALANCE_WORKFLOW_ID}/trigger`,
+        message: `Checking balance & deducting ₹${estimatedCost.toFixed(2)} from ${selectedAgent.name}…`,
+      }))
+
+      const deductResult = await deductViaWorkflow(selectedAgent.id, selectedAgent.captureHash, amountCents, bookingReference)
+
+      if (!deductResult.success) {
+        throw new Error(deductResult.error ?? "Balance deduction failed")
+      }
+
+      if (deductResult.balanceCents != null) {
+        setSelectedAgent((prev) =>
+          prev ? { ...prev, balanceCents: deductResult.balanceCents! } : null,
+        )
+      }
+
+      updateStep(index, (step) => ({
+        ...step,
+        message: `Balance deducted. Capturing payment via PayU…`,
+      }))
+
+      const captureResult = await capturePayU(
+        selectedAgent.mihpayid,
+        selectedAgent.txnid,
+        selectedAgent.amount,
+        selectedAgent.captureHash || undefined,
+      )
+
+      if (!captureResult.success) {
+        console.warn("[PayU capture] Non-critical failure:", captureResult.error)
+      }
+
+      const balanceDisplay = deductResult.balanceCents != null
+        ? `Balance: ₹${(deductResult.balanceCents / 100).toFixed(2)}`
+        : ""
+
+      updateStep(index, (step) => ({
+        ...step,
+        status: "paymentDone",
+        paymentReference: `agent_${selectedAgent.id}_${bookingReference}`,
+        amountPaid: estimatedCost,
+        message: `Paid via ${selectedAgent.name}. ${balanceDisplay}`,
+      }))
+    } else {
+      updateStep(index, (step) => ({
+        ...step,
+        status: "paymentInProgress",
+        paymentApi: "/api/travel/mock/dummy-payment",
+        message: "Calling /api/travel/mock/dummy-payment…",
+      }))
+
+      const paymentResponse = await fetch("/api/travel/mock/dummy-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingReference, amount: estimatedCost }),
+      })
+      const paymentData = (await paymentResponse.json()) as PaymentApiResponse | { error: string }
+
+      if (!paymentResponse.ok || "error" in paymentData) {
+        throw new Error("error" in paymentData ? paymentData.error : "Payment failed")
+      }
+
+      updateStep(index, (step) => ({
+        ...step,
+        status: "paymentDone",
+        paymentReference: paymentData.paymentReference,
+        amountPaid: paymentData.amountPaid,
+        message: paymentData.message,
+      }))
+    }
+  }
+
   async function runFlow() {
     if (!plan || steps.length === 0) return
     setRunningFlow(true)
@@ -244,7 +355,9 @@ export default function MakeMyTripPage() {
           ...step,
           status: "bookingQueued",
           bookingApi: bookingApiPath,
-          paymentApi: "/api/travel/mock/dummy-payment",
+          paymentApi: selectedAgent
+            ? `/api/agents/${selectedAgent.id}/deduct-balance`
+            : "/api/travel/mock/dummy-payment",
           message: "Booking queued.",
         }))
         await sleep(350)
@@ -282,35 +395,7 @@ export default function MakeMyTripPage() {
         }))
         await sleep(300)
 
-        updateStep(index, (step) => ({
-          ...step,
-          status: "paymentInProgress",
-          message: "Calling /api/travel/mock/dummy-payment…",
-        }))
-
-        const paymentResponse = await fetch("/api/travel/mock/dummy-payment", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            bookingReference: data.bookingReference,
-            amount: data.estimatedCost,
-          }),
-        })
-        const paymentData = (await paymentResponse.json()) as PaymentApiResponse | { error: string }
-
-        if (!paymentResponse.ok || "error" in paymentData) {
-          throw new Error(
-            "error" in paymentData ? paymentData.error : `Payment failed for ${booking.type}`,
-          )
-        }
-
-        updateStep(index, (step) => ({
-          ...step,
-          status: "paymentDone",
-          paymentReference: paymentData.paymentReference,
-          amountPaid: paymentData.amountPaid,
-          message: paymentData.message,
-        }))
+        await processPayment(index, data.bookingReference, data.estimatedCost)
         await sleep(250)
       }
     } catch (err) {
@@ -357,7 +442,9 @@ export default function MakeMyTripPage() {
         ...s,
         status: "bookingQueued",
         bookingApi: bookingApiPath,
-        paymentApi: "/api/travel/mock/dummy-payment",
+        paymentApi: selectedAgent
+          ? `/api/agents/${selectedAgent.id}/deduct-balance`
+          : "/api/travel/mock/dummy-payment",
         message: "Booking queued.",
       }))
       await sleep(350)
@@ -391,35 +478,7 @@ export default function MakeMyTripPage() {
       updateStep(index, (s) => ({ ...s, status: "paymentQueued", message: "Payment queued." }))
       await sleep(300)
 
-      updateStep(index, (s) => ({
-        ...s,
-        status: "paymentInProgress",
-        message: "Calling /api/travel/mock/dummy-payment…",
-      }))
-
-      const paymentResponse = await fetch("/api/travel/mock/dummy-payment", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          bookingReference: data.bookingReference,
-          amount: data.estimatedCost,
-        }),
-      })
-      const paymentData = (await paymentResponse.json()) as PaymentApiResponse | { error: string }
-
-      if (!paymentResponse.ok || "error" in paymentData) {
-        throw new Error(
-          "error" in paymentData ? paymentData.error : `Payment failed for ${booking.type}`,
-        )
-      }
-
-      updateStep(index, (s) => ({
-        ...s,
-        status: "paymentDone",
-        paymentReference: paymentData.paymentReference,
-        amountPaid: paymentData.amountPaid,
-        message: paymentData.message,
-      }))
+      await processPayment(index, data.bookingReference, data.estimatedCost)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Booking failed")
       updateStep(index, (s) => ({
@@ -430,26 +489,20 @@ export default function MakeMyTripPage() {
     } finally {
       setBookingItemId(null)
     }
-  }, [plan, steps])
+  }, [plan, steps, selectedAgent]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <main className="min-h-screen bg-background px-4 py-6">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
+    <main className="min-h-screen bg-background px-4 py-8">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
 
         {/* ── Header ── */}
-        <header className="flex items-center gap-3 rounded-2xl border border-border bg-card px-5 py-4">
-          <div
-            className="flex size-10 items-center justify-center rounded-xl"
-            style={{
-              background: "linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)",
-              boxShadow: "0 2px 16px #3b82f635",
-            }}
-          >
-            <Compass className="size-5 text-white" />
+        <header className="flex items-center gap-4">
+          <div className="flex size-11 items-center justify-center rounded-2xl bg-travel-primary shadow-lg shadow-travel-primary/20">
+            <Globe className="size-5 text-travel-primary-foreground" />
           </div>
           <div>
-            <p className="text-base font-bold tracking-tight">Make My Trip</p>
-            <p className="text-xs text-muted-foreground">AI-powered travel booking agent</p>
+            <h1 className="font-display text-xl font-bold tracking-tight text-foreground">Make My Trip</h1>
+            <p className="text-sm text-muted-foreground">AI-powered travel booking agent</p>
           </div>
 
           <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -457,38 +510,51 @@ export default function MakeMyTripPage() {
             <PaymentAgentOnboardDialog />
             {plan && (
               <>
-                <span
-                  className="rounded-full px-3 py-1 text-xs font-semibold text-white"
-                  style={{ background: "linear-gradient(135deg, #3b82f6, #6366f1)" }}
-                >
+                <Badge className="bg-travel-primary text-travel-primary-foreground">
+                  <Route className="mr-1 size-3" />
                   {plan.intent.from} → {plan.intent.to}
-                </span>
-                <span className="rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground">
+                </Badge>
+                <Badge variant="outline">
                   {plan.intent.travelDays}d · {plan.bookings.length} bookings
-                </span>
+                </Badge>
               </>
             )}
           </div>
         </header>
 
+        <Separator />
+
+        {/* ── Agent Selector ── */}
+        <div className="flex items-center justify-between">
+          <AgentSelector selectedAgent={selectedAgent} onSelect={setSelectedAgent} />
+          {selectedAgent && (
+            <p className="text-xs text-muted-foreground">
+              Bookings will be paid via <span className="font-medium text-foreground">{selectedAgent.name}</span>
+            </p>
+          )}
+          {!selectedAgent && (
+            <p className="text-xs text-muted-foreground">
+              No agent selected — using mock payments
+            </p>
+          )}
+        </div>
+
         {/* ── Error banner ── */}
         {error && (
-          <div
-            className="flex items-center gap-2 rounded-xl border px-4 py-3"
-            style={{ backgroundColor: "#fef2f2", borderColor: "#fca5a5" }}
-          >
-            <AlertTriangle className="size-4 shrink-0 text-red-500" />
-            <p className="text-sm text-red-700">{error}</p>
-          </div>
+          <Alert variant="destructive">
+            <AlertTriangle className="size-4" />
+            <AlertTitle>Something went wrong</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         )}
 
         {/* ── Prompt ── */}
         <TripPromptForm loading={loadingPlan} onGenerate={handleGenerate} />
 
-        {/* ── Day-wise Itinerary (full width) ── */}
+        {/* ── Day-wise Itinerary ── */}
         <DayWisePlan plan={plan} />
 
-        {/* ── Pricing Breakdown (shown after plan, hidden once all done) ── */}
+        {/* ── Pricing Breakdown ── */}
         {plan && !allDone && (
           <PricingBreakdown
             plan={plan}
@@ -508,24 +574,23 @@ export default function MakeMyTripPage() {
           onRun={runFlow}
         />
 
-        {/* ── Booking Execution (full landscape grid) ── */}
+        {/* ── Booking Execution ── */}
         {steps.length > 0 && (
-          <section className="rounded-xl border border-border bg-card p-5">
-            <div className="mb-4 flex items-center gap-2">
-              <div
-                className="h-4 w-1 rounded"
-                style={{ background: "linear-gradient(180deg, #3b82f6, #6366f1)" }}
-              />
-              <h2 className="text-sm font-bold text-foreground">Booking Execution</h2>
-              <span className="ml-auto text-xs text-muted-foreground">
-                {completedBookings}/{steps.length} completed
-              </span>
-            </div>
-            <BookingStepTimeline steps={steps} onBookItem={runSingleBooking} busy={anyBusy} />
-          </section>
+          <Card>
+            <CardContent>
+              <div className="mb-4 flex items-center gap-2">
+                <div className="h-5 w-1 rounded-full bg-travel-primary" />
+                <h2 className="font-display text-sm font-bold text-foreground">Booking Execution</h2>
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {completedBookings}/{steps.length} completed
+                </span>
+              </div>
+              <BookingStepTimeline steps={steps} onBookItem={runSingleBooking} busy={anyBusy} />
+            </CardContent>
+          </Card>
         )}
 
-        {/* ── Summary (shown once all done) ── */}
+        {/* ── Summary ── */}
         {allDone && plan && (
           <BookingSummary plan={plan} steps={steps} />
         )}

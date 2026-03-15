@@ -85,7 +85,10 @@ interface WorkflowStore {
   addNode: (bpmnType: BpmnNodeType, position: { x: number; y: number }) => void;
   updateNodeData: (nodeId: string, data: Partial<BpmnNodeData>) => void;
   deleteNode: (nodeId: string) => void;
+  deleteEdge: (edgeId: string) => void;
   selectNode: (nodeId: string | null) => void;
+  selectedEdgeId: string | null;
+  selectEdge: (edgeId: string | null) => void;
   undo: () => void;
   redo: () => void;
   pushHistory: () => void;
@@ -101,6 +104,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
   nodes: [],
   edges: [],
   selectedNodeId: null,
+  selectedEdgeId: null,
   history: [],
   historyIndex: -1,
 
@@ -183,7 +187,17 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
     }));
   },
 
-  selectNode: (nodeId) => set({ selectedNodeId: nodeId }),
+  deleteEdge: (edgeId) => {
+    get().pushHistory();
+    set((state) => ({
+      edges: state.edges.filter((e) => e.id !== edgeId),
+      selectedEdgeId:
+        state.selectedEdgeId === edgeId ? null : state.selectedEdgeId,
+    }));
+  },
+
+  selectNode: (nodeId) => set({ selectedNodeId: nodeId, selectedEdgeId: null }),
+  selectEdge: (edgeId) => set({ selectedEdgeId: edgeId, selectedNodeId: null }),
 
   pushHistory: () =>
     set((state) => {
@@ -225,6 +239,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
       nodes: [],
       edges: [],
       selectedNodeId: null,
+      selectedEdgeId: null,
     });
   },
 
@@ -237,6 +252,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
       nodes: [],
       edges: [],
       selectedNodeId: null,
+      selectedEdgeId: null,
       history: [],
       historyIndex: -1,
     }),
