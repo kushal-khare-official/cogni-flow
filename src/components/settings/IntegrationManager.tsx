@@ -91,7 +91,7 @@ export function IntegrationManager() {
   const [formKafkaTopic, setFormKafkaTopic] = useState("");
   const [formKafkaGroupId, setFormKafkaGroupId] = useState("");
 
-  // Test request (HTTP only)
+  // Test request (HTTP / Code)
   const [testLoading, setTestLoading] = useState(false);
   const [testResult, setTestResult] = useState<{
     status: number;
@@ -100,6 +100,7 @@ export function IntegrationManager() {
     error?: string;
   } | null>(null);
   const [testToken, setTestToken] = useState("");
+  const [testCodeCtx, setTestCodeCtx] = useState("");
 
   const invalidateAndRefetch = useIntegrationStore((s) => s.invalidateAndRefetch);
 
@@ -141,6 +142,7 @@ export function IntegrationManager() {
     setEditingId(null);
     setTestResult(null);
     setTestToken("");
+    setTestCodeCtx("");
   }
 
   async function sendTestRequest() {
@@ -169,12 +171,25 @@ export function IntegrationManager() {
       const sendsBody = method !== "GET" && method !== "HEAD";
       let body: string | undefined;
       if (sendsBody && formRequestBody.trim()) {
-        try {
-          body = JSON.stringify(JSON.parse(formRequestBody));
-        } catch {
-          body = formRequestBody;
-        }
         if (!headers["Content-Type"]) headers["Content-Type"] = "application/json";
+        if (headers["Content-Type"] === "application/x-www-form-urlencoded") {
+          try {
+            const parsed = JSON.parse(formRequestBody) as Record<string, unknown>;
+            const params = new URLSearchParams();
+            for (const [k, v] of Object.entries(parsed)) {
+              if (v !== undefined && v !== null && v !== "") params.append(k, String(v));
+            }
+            body = params.toString();
+          } catch {
+            body = formRequestBody;
+          }
+        } else {
+          try {
+            body = JSON.stringify(JSON.parse(formRequestBody));
+          } catch {
+            body = formRequestBody;
+          }
+        }
       }
       const res = await fetch(url, { method, headers, body });
       const text = await res.text();
@@ -190,6 +205,58 @@ export function IntegrationManager() {
         statusText: res.statusText,
         body: parsed,
       });
+    } catch (err) {
+      setTestResult({
+        status: 0,
+        statusText: "",
+        body: "",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setTestLoading(false);
+    }
+  }
+
+  async function sendTestCode() {
+    const code = formDefaultCode.trim();
+    if (!code) {
+      setTestResult({ status: 0, statusText: "", body: "", error: "Enter code first." });
+      return;
+    }
+    setTestLoading(true);
+    setTestResult(null);
+    try {
+      let testData: Record<string, unknown> = {};
+      if (testCodeCtx.trim()) {
+        try {
+          const parsed = JSON.parse(testCodeCtx.trim());
+          if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+            testData = parsed;
+          }
+        } catch (parseErr) {
+          setTestResult({ status: 0, statusText: "", body: "", error: `Invalid test input JSON: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}` });
+          setTestLoading(false);
+          return;
+        }
+      }
+      // Structure context the same way the runtime does: node outputs keyed by
+      // node id, with _inputs populated. This lets code use ctx['node-1'].field.
+      const ctx: Record<string, unknown> = {
+        "node-1": testData,
+        _inputs: testData,
+      };
+      const res = await fetch("/api/integrations/test-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, language: formCodeLanguage, ctx }),
+      });
+      const resData = await res.json();
+      const pretty = JSON.stringify(resData, null, 2);
+      if (resData.error) {
+        setTestResult({ status: res.status, statusText: "", body: "", error: resData.error + (resData.stderr ? `\n${resData.stderr}` : "") });
+      } else {
+        setTestResult({ status: res.status, statusText: "OK", body: pretty });
+      }
     } catch (err) {
       setTestResult({
         status: 0,
@@ -453,7 +520,7 @@ export function IntegrationManager() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs">Name</Label>
-                  <Input value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="e.g. Stripe API" className="text-sm" />
+                  <Input value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="e.g. My API" className="text-sm" />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">Type</Label>
@@ -547,15 +614,62 @@ export function IntegrationManager() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Default Request Body <span className="font-normal text-zinc-400">(JSON)</span></Label>
-                    <Textarea
-                      value={formRequestBody}
-                      onChange={(e) => setFormRequestBody(e.target.value)}
-                      placeholder='{"key": "value"}'
-                      rows={3}
-                      className="resize-none font-mono text-xs"
-                    />
+                    <Label className="text-xs">Content Type</Label>
+                    <Select
+                      value={(() => {
+                        try {
+                          const h = formDefaultHeaders.trim() ? JSON.parse(formDefaultHeaders) as Record<string, string> : {};
+                          return h["Content-Type"] ?? "application/json";
+                        } catch { return "application/json"; }
+                      })()}
+                      onValueChange={(v) => {
+                        try {
+                          const h = formDefaultHeaders.trim() ? JSON.parse(formDefaultHeaders) as Record<string, string> : {};
+                          h["Content-Type"] = v;
+                          setFormDefaultHeaders(JSON.stringify(h, null, 2));
+                        } catch {
+                          setFormDefaultHeaders(JSON.stringify({ "Content-Type": v }, null, 2));
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="application/json">application/json</SelectItem>
+                        <SelectItem value="application/x-www-form-urlencoded">application/x-www-form-urlencoded</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[10px] text-zinc-400">
+                      Use <code className="rounded bg-zinc-100 px-0.5 text-[9px]">application/x-www-form-urlencoded</code> for APIs that expect form-encoded bodies.
+                    </p>
                   </div>
+
+                  {(() => {
+                    let ct = "application/json";
+                    try { const h = formDefaultHeaders.trim() ? JSON.parse(formDefaultHeaders) as Record<string, string> : {}; ct = h["Content-Type"] ?? ct; } catch { /* */ }
+                    const isForm = ct === "application/x-www-form-urlencoded";
+                    return (
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">
+                          Default Request Body{" "}
+                          <span className="font-normal text-zinc-400">
+                            ({isForm ? "key-value pairs as JSON — encoded as form data" : "JSON"})
+                          </span>
+                        </Label>
+                        <Textarea
+                          value={formRequestBody}
+                          onChange={(e) => setFormRequestBody(e.target.value)}
+                          placeholder={isForm ? '{"amount": "1000", "currency": "usd"}' : '{"key": "value"}'}
+                          rows={3}
+                          className="resize-none font-mono text-xs"
+                        />
+                        {isForm && (
+                          <p className="text-[10px] text-zinc-400">
+                            Write key-value pairs as JSON. They will be encoded as <code className="rounded bg-zinc-100 px-0.5 text-[9px]">key=value&amp;key2=value2</code> when sent.
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   <div className="space-y-1.5">
                     <Label className="text-xs">Default Headers <span className="font-normal text-zinc-400">(JSON)</span></Label>
@@ -711,6 +825,55 @@ export function IntegrationManager() {
                     <p className="text-[10px] text-zinc-400">
                       Optional default code template; can be overridden per step in the Service Task node.
                     </p>
+                  </div>
+
+                  <Separator />
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Test code</p>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Test input (JSON) — available as <code className="rounded bg-zinc-100 px-0.5 text-[10px]">ctx[&apos;node-1&apos;]</code> and <code className="rounded bg-zinc-100 px-0.5 text-[10px]">ctx._inputs</code></Label>
+                      <Textarea
+                        value={testCodeCtx}
+                        onChange={(e) => setTestCodeCtx(e.target.value)}
+                        placeholder='{"value": 42, "name": "test"}'
+                        rows={2}
+                        className="resize-none font-mono text-xs"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={sendTestCode}
+                      disabled={testLoading || !formDefaultCode.trim()}
+                      className="gap-1.5 text-xs"
+                    >
+                      {testLoading ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Send className="size-3.5" />
+                      )}
+                      {testLoading ? "Running…" : "Run test code"}
+                    </Button>
+                    {testResult && (
+                      <div className="rounded-md border border-zinc-200 bg-zinc-50 p-2.5 dark:border-zinc-700 dark:bg-zinc-900/50">
+                        <div className="mb-1.5 flex items-center gap-2">
+                          {testResult.error ? (
+                            <XCircle className="size-4 text-red-500" />
+                          ) : (
+                            <CheckCircle2 className="size-4 text-emerald-500" />
+                          )}
+                          <span className="text-xs font-medium">
+                            {testResult.error ? "Error" : "Success"}
+                          </span>
+                        </div>
+                        {(testResult.error || testResult.body) && (
+                          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-zinc-100 p-2 font-mono text-[10px] dark:bg-zinc-800">
+                            {testResult.error ?? (testResult.body || "(no output)")}
+                          </pre>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

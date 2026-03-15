@@ -1,4 +1,23 @@
 import { execFile } from "child_process";
+import crypto from "crypto";
+import { Buffer } from "buffer";
+import { URL, URLSearchParams } from "url";
+
+const ALLOWED_MODULES: Record<string, unknown> = {
+  crypto,
+  buffer: { Buffer },
+  url: { URL, URLSearchParams },
+};
+
+function sandboxedRequire(name: string): unknown {
+  const mod = ALLOWED_MODULES[name];
+  if (!mod) {
+    throw new Error(
+      `Module "${name}" is not available. Allowed modules: ${Object.keys(ALLOWED_MODULES).join(", ")}`,
+    );
+  }
+  return mod;
+}
 
 export async function executeCode(
   code: string,
@@ -16,8 +35,8 @@ async function executeJavascript(
   ctx: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   try {
-    const fn = new Function("ctx", code);
-    const result = await fn(ctx);
+    const fn = new Function("ctx", "require", "crypto", "Buffer", "URL", "URLSearchParams", code);
+    const result = await fn(ctx, sandboxedRequire, crypto, Buffer, URL, URLSearchParams);
     return { result: result ?? null };
   } catch (error) {
     return {

@@ -91,7 +91,6 @@ export async function executeHttp(
 
   let body: string | undefined;
   if (operation.bodyTemplate !== undefined) {
-    // Normalize: parse JSON string to object so each field value is resolved (e.g. {{node-1.name}} → actual value)
     let bodyTemplate = operation.bodyTemplate;
     if (typeof bodyTemplate === "string" && bodyTemplate.trim()) {
       try {
@@ -101,11 +100,15 @@ export async function executeHttp(
       }
     }
     const resolvedBody = resolveTemplate(bodyTemplate, context);
-    body = typeof resolvedBody === "string"
-      ? resolvedBody
-      : JSON.stringify(resolvedBody);
     if (!headers["Content-Type"]) {
       headers["Content-Type"] = "application/json";
+    }
+    if (headers["Content-Type"] === "application/x-www-form-urlencoded") {
+      body = toFormUrlEncoded(resolvedBody);
+    } else {
+      body = typeof resolvedBody === "string"
+        ? resolvedBody
+        : JSON.stringify(resolvedBody);
     }
   }
 
@@ -135,4 +138,30 @@ export async function executeHttp(
     headers: responseHeaders,
     body: parsedBody,
   };
+}
+
+/**
+ * Flatten a resolved body (object or string) into a URL-encoded form string.
+ * Supports nested bracket keys (e.g. `line_items[0][price]`).
+ */
+function toFormUrlEncoded(resolved: unknown): string {
+  if (typeof resolved === "string") {
+    if (resolved.includes("=")) return resolved;
+    try {
+      resolved = JSON.parse(resolved) as Record<string, unknown>;
+    } catch {
+      return resolved as string;
+    }
+  }
+  if (resolved === null || resolved === undefined) return "";
+  if (typeof resolved !== "object") return String(resolved);
+
+  const params = new URLSearchParams();
+  const flat = resolved as Record<string, unknown>;
+  for (const [key, value] of Object.entries(flat)) {
+    if (value !== undefined && value !== null && value !== "") {
+      params.append(key, String(value));
+    }
+  }
+  return params.toString();
 }

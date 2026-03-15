@@ -62,8 +62,11 @@ function WorkflowCanvasInner() {
   const onConnect = useWorkflowStore((s) => s.onConnect);
   const addNode = useWorkflowStore((s) => s.addNode);
   const selectNode = useWorkflowStore((s) => s.selectNode);
+  const selectEdge = useWorkflowStore((s) => s.selectEdge);
   const deleteNode = useWorkflowStore((s) => s.deleteNode);
+  const deleteEdge = useWorkflowStore((s) => s.deleteEdge);
   const selectedNodeId = useWorkflowStore((s) => s.selectedNodeId);
+  const selectedEdgeId = useWorkflowStore((s) => s.selectedEdgeId);
 
   const onDragOver = useCallback((event: DragEvent) => {
     event.preventDefault();
@@ -92,14 +95,15 @@ function WorkflowCanvasInner() {
 
   const onKeyDown = useCallback(
     (event: KeyboardEvent) => {
-      if (
-        (event.key === "Delete" || event.key === "Backspace") &&
-        selectedNodeId
-      ) {
-        deleteNode(selectedNodeId);
+      if (event.key === "Delete" || event.key === "Backspace") {
+        if (selectedNodeId) {
+          deleteNode(selectedNodeId);
+        } else if (selectedEdgeId) {
+          deleteEdge(selectedEdgeId);
+        }
       }
     },
-    [selectedNodeId, deleteNode]
+    [selectedNodeId, selectedEdgeId, deleteNode, deleteEdge]
   );
 
   return (
@@ -120,7 +124,8 @@ function WorkflowCanvasInner() {
         onDrop={onDrop}
         onDragOver={onDragOver}
         onNodeClick={(_, node) => selectNode(node.id)}
-        onPaneClick={() => selectNode(null)}
+        onEdgeClick={(_, edge) => selectEdge(edge.id)}
+        onPaneClick={() => { selectNode(null); selectEdge(null); }}
         fitView
         snapToGrid
         snapGrid={SNAP_GRID}

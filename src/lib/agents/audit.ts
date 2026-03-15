@@ -5,7 +5,6 @@ export interface AuditEntryInput {
   action: string;
   amountCents?: number;
   status: string;
-  stripeObjectId?: string;
   executionRunId?: string;
   nodeId?: string;
   anomalyScore?: number;
@@ -19,7 +18,6 @@ export async function logAuditEntry(input: AuditEntryInput): Promise<string> {
       action: input.action,
       amountCents: input.amountCents ?? null,
       status: input.status,
-      stripeObjectId: input.stripeObjectId ?? null,
       executionRunId: input.executionRunId ?? null,
       nodeId: input.nodeId ?? null,
       anomalyScore: input.anomalyScore ?? null,
@@ -35,7 +33,6 @@ export interface AuditTrailItem {
   action: string;
   amountCents: number | null;
   status: string;
-  stripeObjectId: string | null;
   anomalyScore: number | null;
   createdAt: Date;
 }
@@ -55,7 +52,6 @@ export async function getAuditTrail(
       action: true,
       amountCents: true,
       status: true,
-      stripeObjectId: true,
       anomalyScore: true,
       createdAt: true,
     },

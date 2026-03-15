@@ -2,7 +2,10 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Compass, Sparkles, Loader2, MapPin } from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Textarea } from "@/components/ui/textarea"
+import { Badge } from "@/components/ui/badge"
+import { Globe, Sparkles, Loader2, MapPinned } from "lucide-react"
 
 const SUGGESTIONS = [
   "Vizag to Manali, 3-star hotel for 3 days, flight journey",
@@ -28,90 +31,75 @@ export function TripPromptForm({ loading, onGenerate }: TripPromptFormProps) {
   }
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="overflow-hidden rounded-2xl border border-border bg-card"
-    >
-      {/* ── Gradient banner header ── */}
-      <div
-        className="flex items-center gap-4 px-6 py-5"
-        style={{ background: "linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)" }}
-      >
-        <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-sm">
-          <Compass className="size-6 text-white" />
+    <Card className="overflow-hidden">
+      <CardHeader className="border-b bg-travel-primary px-6 py-5">
+        <div className="flex items-center gap-4">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-sm">
+            <Globe className="size-5 text-travel-primary-foreground" />
+          </div>
+          <div className="flex-1">
+            <CardTitle className="font-display text-base font-extrabold tracking-tight text-travel-primary-foreground">
+              AI Travel Planner
+            </CardTitle>
+            <CardDescription className="mt-0.5 text-xs text-travel-primary-foreground/70">
+              Describe your trip · AI returns only supported integrations
+            </CardDescription>
+          </div>
+          <Sparkles className="size-5 text-travel-primary-foreground/40" />
         </div>
-        <div className="flex-1">
-          <h2 className="text-base font-extrabold tracking-tight text-white">
-            AI Travel Planner
-          </h2>
-          <p className="text-xs text-blue-100 mt-0.5">
-            Describe your trip · AI returns only supported integrations
-          </p>
-        </div>
-        <Sparkles className="size-5 text-white/60" />
-      </div>
+      </CardHeader>
 
-      {/* ── Input area ── */}
-      <div className="p-5">
-        <div className="relative">
-          <MapPin
-            className="pointer-events-none absolute left-3.5 top-3.5 size-4 text-muted-foreground"
-          />
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder="e.g. book itinerary from Vizag to Manali, flight + 3-star hotel for 3 days..."
-            disabled={loading}
-            rows={3}
-            className="w-full resize-none rounded-xl border border-border bg-background pl-10 pr-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
-          />
-        </div>
-
-        {/* Suggestion chips */}
-        <div className="mt-3 flex flex-wrap gap-2">
-          {SUGGESTIONS.map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setPrompt(s)}
+      <CardContent className="pt-5">
+        <form onSubmit={handleSubmit}>
+          <div className="relative">
+            <MapPinned className="pointer-events-none absolute left-3.5 top-3.5 size-4 text-muted-foreground" />
+            <Textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="e.g. book itinerary from Vizag to Manali, flight + 3-star hotel for 3 days..."
               disabled={loading}
-              className="rounded-full border border-border bg-muted/40 px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50"
-            >
-              {s}
-            </button>
-          ))}
-        </div>
+              rows={3}
+              className="resize-none pl-10"
+            />
+          </div>
 
-        {/* Submit */}
-        <div className="mt-4 flex items-center justify-between gap-3">
-          <p className="text-xs text-muted-foreground">
-            Powered by Anthropic Claude
-          </p>
-          <Button
-            type="submit"
-            disabled={loading || !prompt.trim()}
-            className="gap-2 px-6 font-semibold"
-            style={{
-              background: loading
-                ? "#94a3b8"
-                : "linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)",
-              border: "none",
-            }}
-          >
-            {loading ? (
-              <>
-                <Loader2 className="size-4 animate-spin" />
-                Generating Plan...
-              </>
-            ) : (
-              <>
-                <Sparkles className="size-4" />
-                Generate Plan
-              </>
-            )}
-          </Button>
-        </div>
-      </div>
-    </form>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {SUGGESTIONS.map((s) => (
+              <Badge
+                key={s}
+                variant="outline"
+                className="cursor-pointer transition-colors hover:border-travel-primary/40 hover:bg-travel-primary-muted hover:text-travel-primary"
+                onClick={() => !loading && setPrompt(s)}
+              >
+                {s}
+              </Badge>
+            ))}
+          </div>
+
+          <div className="mt-4 flex items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">
+              Powered by Anthropic Claude
+            </p>
+            <Button
+              type="submit"
+              disabled={loading || !prompt.trim()}
+              className="gap-2 bg-travel-primary px-6 font-semibold text-travel-primary-foreground hover:bg-travel-primary/90"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Generating Plan...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="size-4" />
+                  Generate Plan
+                </>
+              )}
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   )
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAuditTrail, logAuditEntry } from "@/lib/stripe/audit";
+import { getAuditTrail, logAuditEntry } from "@/lib/agents/audit";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -28,7 +28,6 @@ export async function POST(request: NextRequest, { params }: Params) {
       action: string;
       amountCents?: number;
       status: string;
-      stripeObjectId?: string;
       executionRunId?: string;
       nodeId?: string;
       anomalyScore?: number;
@@ -45,12 +44,11 @@ export async function POST(request: NextRequest, { params }: Params) {
     const id = await logAuditEntry({
       agentPassportId,
       action: body.action,
-      amountCents: body.amountCents,
+      amountCents: body.amountCents != null ? Number(body.amountCents) : undefined,
       status: body.status,
-      stripeObjectId: body.stripeObjectId,
       executionRunId: body.executionRunId,
       nodeId: body.nodeId,
-      anomalyScore: body.anomalyScore,
+      anomalyScore: body.anomalyScore != null ? Number(body.anomalyScore) : undefined,
       metadata: body.metadata,
     });
 

@@ -22,7 +22,6 @@ export async function computeAnomalyScore(
   const flags: string[] = [];
   let score = 0;
 
-  // 1. Action pattern deviation: first time this action for this agent
   const actionHistory = await prisma.agentAuditLog.findMany({
     where: { agentPassportId, action },
     take: 1,
@@ -32,7 +31,6 @@ export async function computeAnomalyScore(
     score += 0.3;
   }
 
-  // 2. Amount spike vs historical average
   const recentAmounts = await prisma.agentAuditLog.findMany({
     where: { agentPassportId, amountCents: { not: null } },
     select: { amountCents: true },
@@ -50,7 +48,6 @@ export async function computeAnomalyScore(
     }
   }
 
-  // 3. Frequency burst: too many calls in short window
   const windowStart = new Date(Date.now() - FREQUENCY_WINDOW_SECONDS * 1000);
   const recentCount = await prisma.agentAuditLog.count({
     where: {
@@ -63,7 +60,6 @@ export async function computeAnomalyScore(
     score += 0.2;
   }
 
-  // Cap at 1.0
   score = Math.min(1, score);
   return { score, flags };
 }

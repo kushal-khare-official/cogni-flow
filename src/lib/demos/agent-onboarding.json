@@ -1,75 +1,70 @@
 {
-  "name": "Agent Onboarding Flow",
-  "description": "Register an agent (KYA passport), create a mandate, test Stripe connection, log onboarding.",
+  "name": "KYA - PayU",
+  "description": "",
   "nodes": [
-    { "id": "node-1", "type": "startEventNode", "position": { "x": 250, "y": 50 }, "data": { "label": "Start", "bpmnType": "startEvent", "requestBody": [{ "key": "name", "type": "string", "required": true, "description": "Agent name" }, { "key": "modelProvider", "type": "string", "required": true, "description": "Model provider (e.g. openai)" }, { "key": "modelVersion", "type": "string", "required": false, "description": "Model version (e.g. gpt-4)" }, { "key": "creatorName", "type": "string", "required": true, "description": "Creator name" }, { "key": "sharedPaymentGrantedToken", "type": "string", "required": false, "description": "SPT from Stripe ACP (for use in payment flows)" }] } },
-    {
-      "id": "node-2",
-      "type": "integrationNode",
-      "position": { "x": 250, "y": 200 },
-      "data": {
-        "label": "Register Agent",
-        "bpmnType": "integration",
-        "integrationTemplateId": "tpl-kya-passport",
-        "operationId": "registerAgent",
-        "inputMapping": { "name": "{{node-1.name}}", "modelProvider": "{{node-1.modelProvider}}", "modelVersion": "{{node-1.modelVersion}}", "creatorName": "{{node-1.creatorName}}" },
-        "outputMapping": { "id": "body.id", "fingerprint": "body.fingerprint", "status": "body.status" },
-        "outputSchema": [{ "key": "id", "type": "string", "description": "Passport ID" }, { "key": "fingerprint", "type": "string" }, { "key": "status", "type": "string" }],
-        "stepConfig": { "method": "POST", "path": "/", "bodyTemplate": { "name": "{{name}}", "modelProvider": "{{modelProvider}}", "modelVersion": "{{modelVersion}}", "creatorName": "{{creatorName}}" } }
-      }
-    },
-    {
-      "id": "node-3",
-      "type": "integrationNode",
-      "position": { "x": 250, "y": 350 },
-      "data": {
-        "label": "Create Mandate",
-        "bpmnType": "integration",
-        "integrationTemplateId": "tpl-kya-mandate",
-        "operationId": "createMandate",
-        "inputMapping": { "passportId": "{{node-2.id}}", "description": "Onboarding mandate", "maxAmountCents": "5000", "maxTotalSpendCents": "50000" },
-        "outputMapping": { "id": "body.id", "status": "body.status" },
-        "outputSchema": [{ "key": "id", "type": "string", "description": "Mandate ID" }, { "key": "status", "type": "string" }],
-        "stepConfig": { "method": "POST", "path": "/{{passportId}}/mandate", "bodyTemplate": { "description": "{{description}}", "maxAmountCents": "{{maxAmountCents}}", "maxTotalSpendCents": "{{maxTotalSpendCents}}" } }
-      }
-    },
     {
       "id": "node-4",
-      "type": "integrationNode",
-      "position": { "x": 250, "y": 500 },
+      "type": "endEventNode",
+      "position": { "x": 330, "y": 420 },
       "data": {
-        "label": "Test Stripe (List Customers)",
-        "bpmnType": "integration",
-        "integrationTemplateId": "tpl-stripe",
-        "operationId": "listCustomers",
-        "inputMapping": { "limit": "10" },
-        "outputMapping": { "data": "body.data", "has_more": "body.has_more" },
-        "outputSchema": [{ "key": "data", "type": "object", "description": "Customer list" }, { "key": "has_more", "type": "boolean" }],
-        "stepConfig": { "method": "GET", "path": "/customers" }
+        "label": "End",
+        "bpmnType": "endEvent",
+        "stepName": "End",
+        "description": "End of the process",
+        "executionStatus": "idle",
+        "responseMapping": {}
       }
     },
     {
-      "id": "node-5",
-      "type": "integrationNode",
-      "position": { "x": 250, "y": 650 },
+      "id": "node-876900df",
+      "type": "taskNode",
+      "position": { "x": 360, "y": 240 },
       "data": {
-        "label": "Log Onboarding",
-        "bpmnType": "integration",
-        "integrationTemplateId": "tpl-kya-monitor",
-        "operationId": "logAudit",
-        "inputMapping": { "passportId": "{{node-2.id}}", "action": "onboarding_complete", "amountCents": "0", "status": "success" },
-        "outputMapping": { "id": "body.id" },
-        "outputSchema": [{ "key": "id", "type": "string", "description": "Audit log ID" }],
-        "stepConfig": { "method": "POST", "path": "/{{passportId}}/audit", "bodyTemplate": { "action": "{{action}}", "amountCents": "{{amountCents}}", "status": "{{status}}" } }
+        "label": "Create PayU Hash",
+        "bpmnType": "serviceTask",
+        "integrationId": "cmmrm4nq600061clnmplmesqt",
+        "stepConfig": {
+          "language": "javascript",
+          "code": "function generateIntentHash(key, txnid, amount, productinfo, firstname, email, salt, siDetailsObj = null) {\n    // Core parameters\n    const params = [key, txnid, amount.toString(), productinfo, firstname, email];\n    \n    // Add exactly 10 empty strings for the unused UDFs\n    for (let i = 0; i < 10; i++) {\n        params.push(\"\");\n    }\n\n    // Append si_details if provided\n    if (siDetailsObj) {\n        params.push(JSON.stringify(siDetailsObj));\n    }\n\n    // Append the salt\n    params.push(salt);\n    \n    // Construct the string and hash it\n    const hashString = params.join('|');\n    return crypto.createHash('sha512').update(hashString).digest('hex').toLowerCase();\n}\n\nfunction generateCaptureHash(key, command, var1, salt) {\n    const hashString = [key, command, var1, salt].join('|');\n    return crypto.createHash('sha512').update(hashString).digest('hex').toLowerCase();\n}\n\nlet salt = \"LsizOHSMT39FmUfBJExRhvJUpR74fyLO\";\n\nlet intentHash = generateIntentHash(ctx['node-1'].key, ctx['node-1'].txnid, ctx['node-1'].amount, ctx['node-1'].productinfo, ctx['node-1'].firstname, ctx['node-1'].email, salt, ctx['node-1'].siDetailsObj = null)\n\nlet captureHash = generateCaptureHash(ctx['node-1'].key, \"capture_transaction\", ctx['node-1'].txnid, salt);\n\nreturn { intentHash, captureHash };"
+        },
+        "executionStatus": "idle",
+        "inputMapping": {
+          "key": "{{node-1.key}}",
+          "txnid": "{{node-1.txnid}}",
+          "amount": "{{node-1.amount}}",
+          "firstname": "{{node-1.firstname}}",
+          "si_details": "{{node-1.si_details}}",
+          "email": "{{node-1.email}}",
+          "productinfo": "{{node-1.productinfo}}"
+        },
+        "outputMapping": {
+          "hash": "{{body.result}}"
+        }
       }
     },
-    { "id": "node-6", "type": "endEventNode", "position": { "x": 250, "y": 800 }, "data": { "label": "End", "bpmnType": "endEvent" } }
+    {
+      "id": "node-52003eea",
+      "type": "startEventNode",
+      "position": { "x": 375, "y": 45 },
+      "data": {
+        "label": "Start Event",
+        "bpmnType": "startEvent",
+        "executionStatus": "idle"
+      }
+    }
   ],
   "edges": [
-    { "id": "e-node-1-node-2", "source": "node-1", "target": "node-2", "type": "conditional", "data": {} },
-    { "id": "e-node-2-node-3", "source": "node-2", "target": "node-3", "type": "conditional", "data": {} },
-    { "id": "e-node-3-node-4", "source": "node-3", "target": "node-4", "type": "conditional", "data": {} },
-    { "id": "e-node-4-node-5", "source": "node-4", "target": "node-5", "type": "conditional", "data": {} },
-    { "id": "e-node-5-node-6", "source": "node-5", "target": "node-6", "type": "conditional", "data": {} }
+    {
+      "id": "e-node-876900df-node-4-e42f1a70",
+      "source": "node-876900df",
+      "target": "node-4",
+      "type": "conditional"
+    },
+    {
+      "id": "e-node-52003eea-node-876900df-82c995ff",
+      "source": "node-52003eea",
+      "target": "node-876900df",
+      "type": "conditional"
+    }
   ]
 }

@@ -10,6 +10,8 @@ import {
   XCircle,
   AlertCircle,
   Activity,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,9 +26,83 @@ interface AuditEntry {
   action: string;
   amountCents: number | null;
   status: string;
-  stripeObjectId: string | null;
   anomalyScore: number | null;
   createdAt: string;
+}
+
+function applyTraceToCanvas(
+  trace: { nodeId: string; input?: unknown; output?: unknown }[]
+) {
+  const nodes = useWorkflowStore.getState().nodes;
+  const traceByNodeId = new Map<
+    string,
+    { input?: unknown; output?: unknown; count: number }
+  >();
+  for (const step of trace) {
+    const existing = traceByNodeId.get(step.nodeId);
+    if (existing) {
+      existing.count += 1;
+      existing.input = step.input;
+      existing.output = step.output;
+    } else {
+      traceByNodeId.set(step.nodeId, {
+        input: step.input,
+        output: step.output,
+        count: 1,
+      });
+    }
+  }
+  useWorkflowStore.setState({
+    nodes: nodes.map((n) => {
+      const entry = traceByNodeId.get(n.id);
+      if (entry) {
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            executionStatus: "completed" as const,
+            executionInput: entry.input,
+            executionOutput: entry.output,
+            executionCount: entry.count > 1 ? entry.count : undefined,
+          },
+        };
+      }
+      return {
+        ...n,
+        data: {
+          ...n.data,
+          executionStatus: "idle" as const,
+          executionInput: undefined,
+          executionOutput: undefined,
+          executionCount: undefined,
+        },
+      };
+    }),
+  });
+}
+
+function clearCanvasTrace() {
+  const nodes = useWorkflowStore.getState().nodes;
+  const needsReset = nodes.some(
+    (n) =>
+      (n.data.executionStatus && n.data.executionStatus !== "idle") ||
+      n.data.executionInput !== undefined ||
+      n.data.executionOutput !== undefined ||
+      n.data.executionCount !== undefined
+  );
+  if (!needsReset) return;
+  useWorkflowStore.setState({
+    nodes: nodes.map((n) => ({
+      ...n,
+      data: {
+        ...n.data,
+        executionStatus: "idle" as const,
+        executionInput: undefined,
+        executionOutput: undefined,
+        executionCount: undefined,
+      },
+    })),
+  });
 }
 
 export function ExecutionPanel() {
@@ -36,6 +112,8 @@ export function ExecutionPanel() {
   const isExecuting = useExecutionStore((s) => s.isExecuting);
   const setHistory = useExecutionStore((s) => s.setHistory);
   const workflowId = useWorkflowStore((s) => s.id);
+  const selectedRunId = useExecutionStore((s) => s.selectedRunId);
+  const setSelectedRunId = useExecutionStore((s) => s.setSelectedRunId);
 
   const [expandedTraces, setExpandedTraces] = useState<Set<string>>(new Set());
   const [tab, setTab] = useState<PanelTab>("runs");
@@ -76,6 +154,32 @@ export function ExecutionPanel() {
   useEffect(() => {
     if (tab === "kya" && selectedAgentId) fetchAudit();
   }, [tab, selectedAgentId, fetchAudit]);
+
+  const handleSelectRun = useCallback(
+    (runId: string) => {
+      if (selectedRunId === runId) {
+        setSelectedRunId(null);
+        clearCanvasTrace();
+        return;
+      }
+      const run = history.find((r) => r.id === runId);
+      if (!run) return;
+      const trace =
+        typeof run.trace === "string" ? JSON.parse(run.trace || "[]") : run.trace ?? [];
+      if (!Array.isArray(trace)) return;
+      setSelectedRunId(runId);
+      applyTraceToCanvas(trace);
+    },
+    [selectedRunId, history, setSelectedRunId]
+  );
+
+  const handleClose = useCallback(() => {
+    if (selectedRunId) {
+      setSelectedRunId(null);
+      clearCanvasTrace();
+    }
+    setOpen(false);
+  }, [selectedRunId, setSelectedRunId, setOpen]);
 
   if (!open) return null;
 
@@ -126,7 +230,7 @@ export function ExecutionPanel() {
             </Badge>
           )}
         </div>
-        <Button variant="ghost" size="icon-sm" onClick={() => setOpen(false)}>
+        <Button variant="ghost" size="icon-sm" onClick={handleClose}>
           <X className="size-4" />
         </Button>
       </div>
@@ -180,28 +284,45 @@ export function ExecutionPanel() {
             const expanded = expandedTraces.has(runKey);
             const trace =
               typeof run.trace === "string" ? JSON.parse(run.trace) : run.trace;
+            const isSelected = selectedRunId === runKey;
             return (
-              <div key={runKey} className="px-4 py-2">
-                <button
-                  onClick={() => toggleTrace(runKey)}
-                  className="flex w-full items-center gap-3 text-left"
-                >
-                  {expanded ? (
-                    <ChevronDown className="size-3.5 text-zinc-400" />
-                  ) : (
-                    <ChevronRight className="size-3.5 text-zinc-400" />
+              <div key={runKey} className={`px-4 py-2 ${isSelected ? "bg-blue-50 dark:bg-blue-950/20" : ""}`}>
+                <div className="flex w-full items-center gap-3">
+                  <button
+                    onClick={() => toggleTrace(runKey)}
+                    className="flex flex-1 items-center gap-3 text-left"
+                  >
+                    {expanded ? (
+                      <ChevronDown className="size-3.5 text-zinc-400" />
+                    ) : (
+                      <ChevronRight className="size-3.5 text-zinc-400" />
+                    )}
+                    {statusIcon(run.status)}
+                    <span className="text-xs font-medium text-zinc-700">
+                      {run.trigger} run
+                    </span>
+                    <Badge variant="outline" className="text-[10px]">
+                      {run.status}
+                    </Badge>
+                    <span className="ml-auto text-[10px] text-zinc-400">
+                      {new Date(run.startedAt).toLocaleString()}
+                    </span>
+                  </button>
+                  {run.status !== "running" && (
+                    <button
+                      onClick={() => handleSelectRun(runKey)}
+                      className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
+                        isSelected
+                          ? "bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/40 dark:text-blue-300"
+                          : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800"
+                      }`}
+                      title={isSelected ? "Clear node inspection" : "Inspect nodes on canvas"}
+                    >
+                      {isSelected ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+                      {isSelected ? "Clear" : "Inspect"}
+                    </button>
                   )}
-                  {statusIcon(run.status)}
-                  <span className="text-xs font-medium text-zinc-700">
-                    {run.trigger} run
-                  </span>
-                  <Badge variant="outline" className="text-[10px]">
-                    {run.status}
-                  </Badge>
-                  <span className="ml-auto text-[10px] text-zinc-400">
-                    {new Date(run.startedAt).toLocaleString()}
-                  </span>
-                </button>
+                </div>
                 {expanded && Array.isArray(trace) && (
                   <div className="ml-8 mt-2 space-y-2">
                     {trace.map(

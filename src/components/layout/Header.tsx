@@ -11,6 +11,7 @@ import {
   Upload,
   Loader2,
   Settings,
+  History,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +32,7 @@ import { Separator } from "@/components/ui/separator";
 import { useUIStore } from "@/lib/store/ui-store";
 import { useWorkflowStore } from "@/lib/store/workflow-store";
 import { RunDialog } from "@/components/execution/RunDialog";
+import { useExecutionStore } from "@/lib/store/execution-store";
 import { BpmnImportDialog } from "@/components/import/BpmnImportDialog";
 import { CredentialManager } from "@/components/settings/CredentialManager";
 import { IntegrationManager } from "@/components/settings/IntegrationManager";
@@ -62,6 +64,9 @@ export function Header() {
   const rightPanelOpen = useUIStore((s) => s.rightPanelOpen);
   const setValidationPanelOpen = useUIStore((s) => s.setValidationPanelOpen);
   const setPublishDialogOpen = useUIStore((s) => s.setPublishDialogOpen);
+
+  const executionPanelOpen = useExecutionStore((s) => s.executionPanelOpen);
+  const setExecutionPanelOpen = useExecutionStore((s) => s.setExecutionPanelOpen);
 
   const handleSubmit = useCallback(async () => {
     if (!promptValue.trim() || isGenerating) return;
@@ -153,6 +158,16 @@ export function Header() {
           <Separator orientation="vertical" className="!h-5 bg-zinc-700" />
 
           <RunDialog />
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setExecutionPanelOpen(!executionPanelOpen)}
+            className="gap-1.5 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-white"
+          >
+            <History className="size-3.5" />
+            History
+          </Button>
 
           <Button
             variant="ghost"

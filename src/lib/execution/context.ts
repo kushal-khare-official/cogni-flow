@@ -16,33 +16,36 @@ export class ExecutionContext {
   resolve(expression: string): unknown {
     const parts = expression.split(".");
     const nodeId = parts[0];
-    let output = this.outputs.get(nodeId);
+    const output = this.outputs.get(nodeId);
 
-    // Fall back to _inputs for placeholder names (e.g. "name", "amount") so body/path templates
-    // that use {{name}} or {{amount}} resolve from input mapping
-    if (output === undefined && nodeId !== "credential") {
+    if (output !== undefined) {
+      let current: unknown = output;
+      for (let i = 1; i < parts.length; i++) {
+        if (current === null || current === undefined) break;
+        if (typeof current !== "object") { current = undefined; break; }
+        current = (current as Record<string, unknown>)[parts[i]];
+      }
+      if (current !== undefined) return current;
+    }
+
+    // Fall back to _inputs so expressions like {{result}}, {{name}}, or even
+    // {{node-1.result}} resolve from the current step's gathered input when
+    // the primary lookup yields undefined.
+    if (nodeId !== "credential" && nodeId !== "_inputs") {
       const inputs = this.outputs.get("_inputs") as Record<string, unknown> | undefined;
       if (inputs && typeof inputs === "object") {
-        if (parts.length === 1) return inputs[nodeId];
-        let current: unknown = inputs[parts[0]];
-        for (let i = 1; i < parts.length; i++) {
+        const fieldParts = parts.length > 1 ? parts.slice(1) : parts;
+        let current: unknown = inputs[fieldParts[0]];
+        for (let i = 1; i < fieldParts.length; i++) {
           if (current === null || current === undefined) return undefined;
           if (typeof current !== "object") return undefined;
-          current = (current as Record<string, unknown>)[parts[i]];
+          current = (current as Record<string, unknown>)[fieldParts[i]];
         }
         return current;
       }
     }
 
-    if (output === undefined) return undefined;
-
-    let current: unknown = output;
-    for (let i = 1; i < parts.length; i++) {
-      if (current === null || current === undefined) return undefined;
-      if (typeof current !== "object") return undefined;
-      current = (current as Record<string, unknown>)[parts[i]];
-    }
-    return current;
+    return undefined;
   }
 
   toJSON(): Record<string, unknown> {

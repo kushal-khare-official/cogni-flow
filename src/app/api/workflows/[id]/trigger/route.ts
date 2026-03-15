@@ -61,7 +61,51 @@ export async function POST(
     });
 
     const endNodes = nodes.filter((n) => n.data.bpmnType === BpmnNodeType.EndEvent);
+    const endNode = endNodes[0];
     const webhookUrl = endNodes.find((n) => n.data.webhookUrl)?.data.webhookUrl;
+    const responseMode = (endNode?.data.responseMode as string | undefined) ?? (webhookUrl ? "webhook" : "sync");
+    const isSyncResponse = responseMode === "sync";
+
+    if (isSyncResponse) {
+      try {
+        const result = await executeWorkflow(id, nodes, edges, body, "live");
+        const status = result.error ? "failed" : "completed";
+        await prisma.executionRun.update({
+          where: { id: run.id },
+          data: {
+            status,
+            output: JSON.stringify(result.context),
+            context: JSON.stringify(result.context),
+            trace: JSON.stringify(result.trace),
+            error: result.error,
+            completedAt: new Date(),
+          },
+        });
+
+        return NextResponse.json({
+          runId: run.id,
+          workflowId: id,
+          status,
+          output: result.endNodeOutput ?? result.context,
+          error: result.error ?? null,
+          completedAt: new Date().toISOString(),
+        }, { status: result.error ? 500 : 200 });
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        await prisma.executionRun.update({
+          where: { id: run.id },
+          data: { status: "failed", error: errorMsg, completedAt: new Date() },
+        });
+        return NextResponse.json({
+          runId: run.id,
+          workflowId: id,
+          status: "failed",
+          output: null,
+          error: errorMsg,
+          completedAt: new Date().toISOString(),
+        }, { status: 500 });
+      }
+    }
 
     executeWorkflow(id, nodes, edges, body, "live")
       .then(async (result) => {
@@ -87,7 +131,7 @@ export async function POST(
                 runId: run.id,
                 workflowId: id,
                 status,
-                output: result.context,
+                output: result.endNodeOutput ?? result.context,
                 error: result.error ?? null,
                 completedAt: new Date().toISOString(),
               }),

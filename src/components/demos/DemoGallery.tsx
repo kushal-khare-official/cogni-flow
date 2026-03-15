@@ -25,10 +25,6 @@ const BUILT_IN_INTEGRATION_NAMES: Record<string, string> = {
   "tpl-kya-passport": "KYA Agent Passport",
   "tpl-kya-mandate": "KYA Agent Mandate",
   "tpl-kya-monitor": "KYA Behavioral Monitor",
-  "tpl-stripe": "Stripe Payments",
-  "tpl-stripe-issuing": "Stripe Issuing (Virtual Cards)",
-  "tpl-stripe-billing": "Stripe Billing",
-  "tpl-stripe-agent-toolkit": "Stripe Agent Toolkit",
 };
 
 function integrationDisplayNames(integrationIds: string[]): string[] {

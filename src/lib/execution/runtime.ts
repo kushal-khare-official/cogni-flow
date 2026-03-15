@@ -32,7 +32,13 @@ export async function executeWorkflow(
   input: Record<string, unknown>,
   mode: ExecutionMode,
   callbacks?: ExecutionCallbacks,
-): Promise<{ trace: ExecutionTraceStep[]; context: Record<string, unknown>; error?: string }> {
+): Promise<{
+  trace: ExecutionTraceStep[];
+  context: Record<string, unknown>;
+  error?: string;
+  endNodeOutput?: Record<string, unknown>;
+  responseMode?: "sync" | "webhook";
+}> {
   const nodeMap = new Map(nodes.map((n) => [n.id, n]));
   const trace: ExecutionTraceStep[] = [];
   const ctx = new ExecutionContext();
@@ -54,6 +60,8 @@ export async function executeWorkflow(
 
   let currentNodeId: string | null = startNode.id;
   let globalError: string | undefined;
+  let endNodeOutput: Record<string, unknown> | undefined;
+  let responseMode: "sync" | "webhook" | undefined;
 
   for (let step = 0; step < MAX_STEPS && currentNodeId; step++) {
     const node = nodeMap.get(currentNodeId);
@@ -83,8 +91,26 @@ export async function executeWorkflow(
         ctx.set(currentNodeId, output);
         callbacks?.onNodeComplete?.(currentNodeId, output, gatherInputs(currentNodeId, edges, ctx));
 
+        responseMode = (node.data.responseMode as "sync" | "webhook" | undefined) ?? undefined;
+        // Make the end node's gathered input available as _inputs so response
+        // mapping expressions like {{result}} resolve from the previous step's output
+        ctx.set("_inputs", output);
+        const mapping = node.data.responseMapping as Record<string, string> | undefined;
+        const effectiveMapping = mapping
+          ? Object.fromEntries(Object.entries(mapping).filter(([k, v]) => k.trim() && v.trim()))
+          : undefined;
+        if (effectiveMapping && Object.keys(effectiveMapping).length > 0) {
+          endNodeOutput = {};
+          for (const [key, expr] of Object.entries(effectiveMapping)) {
+            const resolved = resolveExpression(expr, ctx);
+            endNodeOutput[key] = resolved !== undefined ? resolved : null;
+          }
+        } else {
+          endNodeOutput = output;
+        }
+
         const webhookUrl = node.data.webhookUrl as string | undefined;
-        if (webhookUrl) {
+        if (webhookUrl && responseMode !== "sync") {
           deliverWebhookResponse(webhookUrl, workflowId, ctx.toJSON(), undefined).catch((err) => {
             console.error("[runtime/webhook-response]", err);
           });
@@ -221,7 +247,7 @@ export async function executeWorkflow(
     }
   }
 
-  return { trace, context: ctx.toJSON(), error: globalError };
+  return { trace, context: ctx.toJSON(), error: globalError, endNodeOutput, responseMode };
 }
 
 function gatherInputs(
@@ -384,16 +410,7 @@ async function executeIntegrationNode(
   const canRunLiveHttp =
     type === "http" && mode === "live" && Object.keys(credentialForContext).length > 0;
   const effectiveMode: ExecutionMode =
-    type === "webhook" ? "live" : mode === "live" && (credential || canRunLiveHttp) ? "live" : "mock";
-
-  const stripeAgentParams =
-    type === "stripe_agent" && credential
-      ? {
-          apiKey: credential.apiKey ?? credential.secretKey ?? "",
-          operationId: operation?.id ?? operationIdFromNode ?? "createPaymentIntent",
-          resolvedInputs,
-        }
-      : undefined;
+    type === "webhook" || type === "code" ? "live" : mode === "live" && (credential || canRunLiveHttp) ? "live" : "mock";
 
   const language = (stepConfig.language ?? baseConfig.language ?? "javascript") as string;
 
@@ -429,7 +446,6 @@ async function executeIntegrationNode(
       groupId: baseConfig.groupId ?? resolvedInputs.groupId,
       ...resolvedInputs,
     } : undefined,
-    stripeAgentParams,
     mockConfig,
     operationId: operation?.id ?? operationIdFromNode ?? "default",
   }, ctx);

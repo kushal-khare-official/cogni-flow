@@ -74,6 +74,10 @@ export interface BpmnNodeData {
   requestBody?: { key: string; type: string; required?: boolean; description?: string }[];
   // Webhook response (end node)
   webhookUrl?: string;
+  // End node response mode: "sync" returns output in HTTP response, "webhook" delivers to webhookUrl asynchronously
+  responseMode?: "sync" | "webhook";
+  // End node output mapping — keys to extract from context as the final response
+  responseMapping?: Record<string, string>;
   // Execution trace state
   executionStatus?: "idle" | "running" | "completed" | "error";
   executionInput?: unknown;

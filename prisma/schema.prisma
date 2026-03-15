@@ -40,7 +40,7 @@ model Integration {
   name             String
   icon             String   @default("plug")
   category         String   @default("custom")
-  type             String   // "http" | "mcp_tool" | "code" | "webhook" | "kafka" | "stripe_agent"
+  type             String   // "http" | "mcp_tool" | "code" | "webhook" | "kafka"
   description      String   @default("")
   baseConfig       String   @default("{}")
   operations       String   @default("[]")
@@ -119,9 +119,9 @@ model AgentPassport {
   creatorVerified Boolean   @default(false)
   status          String    @default("active")
   revokedReason   String?
-  stripeKeyScope  String    @default("[]")
   authMethod      String    @default("api_key")
   metadata        String    @default("{}")
+  balanceCents    Int       @default(0)
   issuedAt        DateTime  @default(now())
   expiresAt       DateTime?
   revokedAt       DateTime?
@@ -156,7 +156,6 @@ model AgentAuditLog {
   executionRunId  String?
   nodeId          String?
   action          String
-  stripeObjectId  String?
   amountCents     Int?
   status          String
   anomalyScore    Float?
@@ -166,16 +165,3 @@ model AgentAuditLog {
   agentPassport AgentPassport @relation(fields: [agentPassportId], references: [id], onDelete: Cascade)
 }
 
-model AgenticCheckoutSession {
-  id               String   @id @default(cuid())
-  status           String   @default("not_ready_for_payment")
-  paymentIntentId  String?
-  amount           Int      @default(0)
-  currency         String   @default("usd")
-  lineItems        String   @default("[]")
-  totals           String   @default("[]")
-  workflowId       String?
-  metadata         String   @default("{}")
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-}

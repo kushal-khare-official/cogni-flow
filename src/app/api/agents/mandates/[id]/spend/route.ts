@@ -9,7 +9,6 @@ export async function POST(request: NextRequest, { params }: Params) {
     const body = (await request.json()) as {
       amountCents: number;
       action: string;
-      stripeObjectId?: string;
     };
 
     if (body.amountCents == null || body.amountCents < 0) {
