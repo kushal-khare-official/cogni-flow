@@ -58,6 +58,26 @@ export async function POST(request: NextRequest) {
 
     const createdIntegrationIds = new Map<string, string>();
 
+    function fuzzyMatchIntegration(
+      name: string,
+      type: string,
+    ): string | undefined {
+      const needle = name.toLowerCase().trim();
+      for (const existing of integrations) {
+        if (existing.type !== type) continue;
+        const haystack = existing.name.toLowerCase().trim();
+        if (haystack === needle) return existing.id;
+        if (haystack.includes(needle) || needle.includes(haystack)) return existing.id;
+        const needleWords = needle.split(/[\s\-_]+/);
+        const haystackWords = haystack.split(/[\s\-_]+/);
+        const overlap = needleWords.filter((w) => haystackWords.includes(w));
+        if (overlap.length >= Math.max(1, Math.min(needleWords.length, haystackWords.length) * 0.6)) {
+          return existing.id;
+        }
+      }
+      return undefined;
+    }
+
     for (const node of output.nodes) {
       const newInt = node.data.newIntegration;
       if (!newInt?.name?.trim()) continue;
@@ -65,10 +85,20 @@ export async function POST(request: NextRequest) {
       const dedupeKey = newInt.name.toLowerCase().trim();
       if (createdIntegrationIds.has(dedupeKey)) continue;
 
+      const existingMatch = fuzzyMatchIntegration(newInt.name, newInt.type);
+      if (existingMatch) {
+        createdIntegrationIds.set(dedupeKey, existingMatch);
+        continue;
+      }
+
+      const iconMap: Record<string, string> = {
+        http: "globe", webhook: "webhook", mcp_tool: "wrench", code: "code", kafka: "radio",
+      };
+
       const created = await prisma.integration.create({
         data: {
           name: newInt.name,
-          icon: "plug",
+          icon: iconMap[newInt.type] ?? "plug",
           category: newInt.category || "custom",
           type: newInt.type,
           description: newInt.description || "",
@@ -156,7 +186,50 @@ export async function POST(request: NextRequest) {
       })),
     };
 
-    return NextResponse.json(transformed);
+    // Auto-wire missing inputMapping based on graph edges and upstream outputSchema
+    const nodeMap = new Map(transformed.nodes.map((n) => [n.id, n]));
+    for (const node of transformed.nodes) {
+      const bpmn = node.data.bpmnType as string;
+      if (bpmn === "startEvent" || bpmn === "webhookTrigger") continue;
+      if (node.data.inputMapping && Object.keys(node.data.inputMapping).length > 0) continue;
+
+      const incomingEdges = transformed.edges.filter((e) => e.target === node.id);
+      if (incomingEdges.length === 0) continue;
+
+      const wired: Record<string, string> = {};
+      for (const edge of incomingEdges) {
+        const sourceNode = nodeMap.get(edge.source);
+        if (!sourceNode) continue;
+        const schema = sourceNode.data.outputSchema as
+          | { key: string; type?: string; description?: string }[]
+          | undefined;
+        if (schema?.length) {
+          for (const field of schema) {
+            if (!wired[field.key]) {
+              wired[field.key] = `{{${edge.source}.${field.key}}}`;
+            }
+          }
+        } else if ((sourceNode.data.bpmnType as string) === "startEvent") {
+          const reqBody = sourceNode.data.requestBody as
+            | { key: string }[]
+            | undefined;
+          if (reqBody?.length) {
+            for (const field of reqBody) {
+              if (!wired[field.key]) {
+                wired[field.key] = `{{${edge.source}.${field.key}}}`;
+              }
+            }
+          }
+        }
+      }
+      if (Object.keys(wired).length > 0) {
+        (node.data as Record<string, unknown>).inputMapping = wired;
+      }
+    }
+
+    const newIntegrationIds = Array.from(createdIntegrationIds.values());
+
+    return NextResponse.json({ ...transformed, newIntegrationIds });
   } catch (error) {
     console.error("[ai/generate]", error);
     const message =

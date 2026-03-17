@@ -5,6 +5,7 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import { Send, Bot, User, Loader2, Play } from "lucide-react";
 import { useWorkflowStore } from "@/lib/store/workflow-store";
+import { useIntegrationStore } from "@/lib/store/integration-store";
 import { useUIStore } from "@/lib/store/ui-store";
 import { getReactFlowNodeType, BpmnNodeType } from "@/lib/workflow/types";
 import { Button } from "@/components/ui/button";
@@ -28,27 +29,58 @@ function getMessageText(msg: UIMessage): string {
     .join("");
 }
 
+function isWorkflowPatch(obj: unknown): obj is WorkflowPatch {
+  if (typeof obj !== "object" || obj === null) return false;
+  const o = obj as Record<string, unknown>;
+  return (
+    typeof o.action === "string" &&
+    ["add_node", "remove_node", "update_node", "add_edge", "remove_edge"].includes(o.action) &&
+    typeof o.payload === "object" &&
+    o.payload !== null
+  );
+}
+
 function extractWorkflowPatches(content: string): WorkflowPatch[] {
-  const regex = /```workflowPatch\s*\n([\s\S]*?)```/g;
   const patches: WorkflowPatch[] = [];
+
+  // Match ```workflowPatch (case-insensitive, optional newline)
+  const labeledRegex = /```workflowPatch\s*\n?([\s\S]*?)```/gi;
   let match;
-  while ((match = regex.exec(content)) !== null) {
+  while ((match = labeledRegex.exec(content)) !== null) {
     try {
       const parsed = JSON.parse(match[1].trim());
-      if (Array.isArray(parsed)) {
-        patches.push(...parsed);
-      } else {
-        patches.push(parsed);
+      const items = Array.isArray(parsed) ? parsed : [parsed];
+      for (const item of items) {
+        if (isWorkflowPatch(item)) patches.push(item);
       }
     } catch {
       // skip malformed patches
     }
   }
+  if (patches.length > 0) return patches;
+
+  // Fallback: match any ```json block containing patch-shaped objects
+  const jsonRegex = /```(?:json)?\s*\n?([\s\S]*?)```/gi;
+  while ((match = jsonRegex.exec(content)) !== null) {
+    try {
+      const parsed = JSON.parse(match[1].trim());
+      const items = Array.isArray(parsed) ? parsed : [parsed];
+      const valid = items.filter(isWorkflowPatch);
+      if (valid.length > 0) patches.push(...valid);
+    } catch {
+      // skip non-JSON blocks
+    }
+  }
   return patches;
 }
 
-function stripCodeFences(content: string): string {
-  return content.replace(/```workflowPatch\s*\n[\s\S]*?```/g, "").trim();
+function stripCodeFences(content: string, hadPatches: boolean): string {
+  let stripped = content.replace(/```workflowPatch\s*\n?[\s\S]*?```/gi, "");
+  if (hadPatches) {
+    // Also strip ```json blocks that contained patches
+    stripped = stripped.replace(/```(?:json)?\s*\n?[\s\S]*?```/gi, "");
+  }
+  return stripped.trim();
 }
 
 export function WorkflowChat() {
@@ -59,14 +91,23 @@ export function WorkflowChat() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [input, setInput] = useState("");
 
-  const { messages, sendMessage, status, error, clearError } = useChat({
-    transport: new DefaultChatTransport({
+  const workflowRef = useRef({ nodes, edges });
+  const providerRef = useRef(aiProvider);
+  workflowRef.current = { nodes, edges };
+  providerRef.current = aiProvider;
+
+  const transportRef = useRef(
+    new DefaultChatTransport({
       api: "/api/ai/chat",
-      body: {
-        workflow: { nodes, edges },
-        provider: aiProvider,
-      },
-    }),
+      body: () => ({
+        workflow: workflowRef.current,
+        provider: providerRef.current,
+      }),
+    })
+  );
+
+  const { messages, sendMessage, status, error, clearError } = useChat({
+    transport: transportRef.current,
   });
 
   const isLoading = status === "submitted" || status === "streaming";
@@ -78,9 +119,10 @@ export function WorkflowChat() {
   }, [messages]);
 
   const applyPatches = useCallback(
-    (patches: WorkflowPatch[]) => {
+    async (patches: WorkflowPatch[]) => {
       let currentNodes = [...useWorkflowStore.getState().nodes];
       let currentEdges = [...useWorkflowStore.getState().edges];
+      let integrationCreated = false;
 
       for (const patch of patches) {
         switch (patch.action) {
@@ -88,6 +130,38 @@ export function WorkflowChat() {
             const p = patch.payload;
             const id = (p.id as string) ?? `node-${uuidv4().slice(0, 8)}`;
             const bpmnType = p.bpmnType as BpmnNodeType;
+            const data = (p.data as Record<string, unknown> | undefined) ?? {};
+
+            const newInt = data.newIntegration as
+              | { name: string; type: string; category?: string; description?: string; baseConfig?: Record<string, string> }
+              | undefined;
+            if (newInt?.name?.trim()) {
+              try {
+                const res = await fetch("/api/integrations", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    name: newInt.name,
+                    icon: "plug",
+                    category: newInt.category || "custom",
+                    type: newInt.type,
+                    description: newInt.description || "",
+                    baseConfig: JSON.stringify(newInt.baseConfig ?? {}),
+                    credentialSchema: JSON.stringify([]),
+                    mockConfig: JSON.stringify({}),
+                  }),
+                });
+                if (res.ok) {
+                  const created = await res.json();
+                  data.integrationId = created.id;
+                  integrationCreated = true;
+                }
+              } catch {
+                // integration creation failed, continue without it
+              }
+              delete data.newIntegration;
+            }
+
             currentNodes = [
               ...currentNodes,
               {
@@ -100,7 +174,7 @@ export function WorkflowChat() {
                 data: {
                   label: (p.label as string) ?? "New Node",
                   bpmnType,
-                  ...(p.data as Record<string, unknown> | undefined),
+                  ...data,
                 },
               },
             ];
@@ -146,6 +220,10 @@ export function WorkflowChat() {
       }
 
       setWorkflow({ nodes: currentNodes, edges: currentEdges });
+
+      if (integrationCreated) {
+        useIntegrationStore.getState().invalidateAndRefetch();
+      }
     },
     [setWorkflow]
   );
@@ -192,7 +270,7 @@ export function WorkflowChat() {
             const isUser = msg.role === "user";
             const text = getMessageText(msg);
             const patches = !isUser ? extractWorkflowPatches(text) : [];
-            const displayContent = !isUser ? stripCodeFences(text) : text;
+            const displayContent = !isUser ? stripCodeFences(text, patches.length > 0) : text;
 
             return (
               <div

@@ -43,7 +43,6 @@ export type PaletteCategory =
   | "events"
   | "tasks"
   | "gateways"
-  | "integrations"
   | "logic"
   | "actions";
 
@@ -131,6 +130,7 @@ export const NODE_TYPE_CATEGORIES: Record<PaletteCategory, BpmnNodeType[]> = {
     BpmnNodeType.IntermediateEvent,
     BpmnNodeType.TimerEvent,
     BpmnNodeType.ErrorEvent,
+    BpmnNodeType.WebhookTrigger,
   ],
   tasks: [
     BpmnNodeType.ServiceTask,
@@ -144,8 +144,7 @@ export const NODE_TYPE_CATEGORIES: Record<PaletteCategory, BpmnNodeType[]> = {
     BpmnNodeType.ParallelGateway,
     BpmnNodeType.InclusiveGateway,
   ],
-  integrations: [BpmnNodeType.WebhookTrigger],
-  logic: [BpmnNodeType.Loop, BpmnNodeType.Wait, BpmnNodeType.SplitPath, BpmnNodeType.AgentGate, BpmnNodeType.MandateCheck, BpmnNodeType.BehaviorAudit],
+  logic: [BpmnNodeType.Loop, BpmnNodeType.Wait, BpmnNodeType.SplitPath],
   actions: [
     BpmnNodeType.SendEmail,
     BpmnNodeType.HumanReview,
@@ -183,7 +182,6 @@ export const CATEGORY_LABELS: Record<PaletteCategory, string> = {
   events: "Events",
   tasks: "Tasks",
   gateways: "Gateways",
-  integrations: "Integrations",
   logic: "Logic",
   actions: "Actions",
 };
@@ -203,10 +201,11 @@ export function getReactFlowNodeType(bpmnType: BpmnNodeType): string {
         ? "startEventNode"
         : bpmnType === BpmnNodeType.EndEvent
           ? "endEventNode"
-          : "eventNode",
+          : bpmnType === BpmnNodeType.WebhookTrigger
+            ? "webhookTriggerNode"
+            : "eventNode",
     tasks: "taskNode",
     gateways: "gatewayNode",
-    integrations: "webhookTriggerNode",
     logic: "logicNode",
     actions: "actionNode",
   };
