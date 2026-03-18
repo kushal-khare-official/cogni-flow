@@ -13,7 +13,8 @@
     "db:seed": "npx tsx prisma/seed.ts",
     "db:push-workflows": "npx tsx scripts/push-workflows-to-prod.ts",
     "db:delete-agents": "npx tsx scripts/delete-agents-from-prod.ts",
-    "db:cleanup": "npx tsx scripts/cleanup-db.ts"
+    "db:cleanup": "npx tsx scripts/cleanup-db.ts",
+    "mcp:serve": "npx tsx src/mcp-stdio.ts"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"

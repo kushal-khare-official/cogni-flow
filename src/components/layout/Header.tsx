@@ -31,6 +31,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { useUIStore } from "@/lib/store/ui-store";
 import { useWorkflowStore } from "@/lib/store/workflow-store";
+import { useIntegrationStore } from "@/lib/store/integration-store";
 import { RunDialog } from "@/components/execution/RunDialog";
 import { useExecutionStore } from "@/lib/store/execution-store";
 import { BpmnImportDialog } from "@/components/import/BpmnImportDialog";
@@ -81,6 +82,7 @@ export function Header() {
         const data = await res.json();
         if (data.nodes || data.edges) {
           setWorkflow({ nodes: data.nodes, edges: data.edges });
+          useIntegrationStore.getState().invalidateAndRefetch();
         }
       }
     } catch {
