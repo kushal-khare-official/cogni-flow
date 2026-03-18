@@ -13,15 +13,15 @@ export async function POST(request: NextRequest) {
   const nodes = JSON.parse(workflow.nodes) as BpmnNode[];
   const edges = JSON.parse(workflow.edges) as BpmnEdge[];
 
-  // Ensure built-in integrations exist so nodes with integrationTemplateId (e.g. tpl-kya-passport) resolve
+  // Ensure built-in integrations exist so nodes with integrationTemplateId (e.g. tpl-kya-passport) resolve.
+  // Only create missing records — never overwrite existing ones so user customizations are preserved.
   const integrationIds = [...new Set(nodes.map((n) => (n.data?.integrationId ?? n.data?.integrationTemplateId) as string).filter(Boolean))];
   const toUpsert = getBuiltInIntegrationsByIds(integrationIds);
   for (const integration of toUpsert) {
-    await prisma.integration.upsert({
-      where: { id: integration.id },
-      update: { ...integration },
-      create: { ...integration },
-    });
+    const exists = await prisma.integration.findUnique({ where: { id: integration.id }, select: { id: true } });
+    if (!exists) {
+      await prisma.integration.create({ data: { ...integration } });
+    }
   }
 
   const run = await prisma.executionRun.create({

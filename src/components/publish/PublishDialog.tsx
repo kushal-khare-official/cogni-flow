@@ -165,8 +165,26 @@ export function PublishDialog() {
         const err = await publishRes.json().catch(() => ({ error: publishRes.statusText }));
         throw new Error((err as { error?: string }).error ?? "Publish failed");
       }
-      const published = (await publishRes.json()) as { status: string };
-      setWorkflow({ status: published.status as "shadow" | "live" });
+      const published = (await publishRes.json()) as {
+        status: string;
+        nodes?: string | BpmnNode[];
+        edges?: string | BpmnEdge[];
+      };
+      const publishedNodes = published.nodes
+        ? Array.isArray(published.nodes)
+          ? published.nodes
+          : (JSON.parse(published.nodes as string) as BpmnNode[])
+        : undefined;
+      const publishedEdges = published.edges
+        ? Array.isArray(published.edges)
+          ? published.edges
+          : (JSON.parse(published.edges as string) as BpmnEdge[])
+        : undefined;
+      setWorkflow({
+        status: published.status as "shadow" | "live",
+        ...(publishedNodes ? { nodes: publishedNodes } : {}),
+        ...(publishedEdges ? { edges: publishedEdges } : {}),
+      });
       setSuccess(published.status);
       setSuccessId(saved.id);
     } catch (err) {

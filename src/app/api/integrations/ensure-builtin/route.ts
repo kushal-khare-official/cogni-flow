@@ -10,14 +10,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, ensured: 0 });
     }
     const toUpsert = getBuiltInIntegrationsByIds(integrationIds);
+    let created = 0;
     for (const integration of toUpsert) {
-      await prisma.integration.upsert({
-        where: { id: integration.id },
-        update: { ...integration },
-        create: { ...integration },
-      });
+      const exists = await prisma.integration.findUnique({ where: { id: integration.id }, select: { id: true } });
+      if (!exists) {
+        await prisma.integration.create({ data: { ...integration } });
+        created++;
+      }
     }
-    return NextResponse.json({ ok: true, ensured: toUpsert.length });
+    return NextResponse.json({ ok: true, ensured: created });
   } catch (e) {
     console.error("ensure-builtin:", e);
     return NextResponse.json({ error: "Failed to ensure built-in integrations" }, { status: 500 });
